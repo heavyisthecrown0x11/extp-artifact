@@ -1,4 +1,3 @@
-Cleaned EXTp_CST
 Running EXTp_CST ...
-Finished EXTp_CST (0:00:11 elapsed time)
-0:00:15 elapsed time
+Finished EXTp_CST (0:00:10 elapsed time)
+0:00:14 elapsed time

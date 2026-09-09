@@ -1,53 +1,55 @@
 (*
   CST_Model.thy  --  EXTp / Counterfactual Soundness Theorem
   =========================================================
-  FAZ 0: Saf EXTp modeli (executable defs) + FAZ 1 locale iskeleti.
+  PHASE 0: Pure EXTp model (executable defs) + PHASE 1 locale skeleton.
 
-  Bu dosya, App A'daki yari-formal ispati makine-kontrollu KOSULLU
-  teoreme yukseltmenin taban katmanidir. seL4 harness'ina VE lifting
-  acigina KASITLI olarak dokunmaz -- cunku kosullu teorem (A1-A4
-  hipotez olarak alindiginda) lifting'den bagimsizdir. Lifting yalnizca
-  Faz 3'te, A1'i K_verified icin discharge etmek istersek devreye girer.
+  This file is the base layer for lifting the semi-formal proof of App A to
+  a machine-checked CONDITIONAL theorem. It DELIBERATELY does not touch the
+  seL4 harness OR the lifting gap -- because the conditional theorem (with
+  A1-A4 taken as hypotheses) is independent of the lifting. The lifting only
+  enters in Phase 3, if we want to discharge A1 for K_verified.
 
-  Kaynak eslesmesi:
-    - datatype/record'lar  : extp.tex sec:framework, sec:soe, App A "Notation"
+  Source correspondence:
+    - datatypes/records    : extp.tex sec:framework, sec:soe, App A "Notation"
     - D (divergence)       : extp_formal_properties.md P2/P3, App A
     - envelope E           : extp.tex sec:cst, CST doc sec:3.4
-    - dort-adimli check    : extp.tex sec:intervention (1)-(4)
+    - four-step check      : extp.tex sec:intervention (1)-(4)
     - locale A1-A4         : extp.tex Table tab:assumptions, CST doc sec:3.2 / sec:5.4
 
-  Durum notlari (FAZ 0 + FAZ 1 + FAZ 2 tamam, sorry YOK):
-    - Bu katmandaki TUM tanimlar total ve executable (by eval ile dogrulandi).
-    - Kosullu teorem cst_conditional (Teorem 1, => yonu) ISPATLI; uc bounding
-      lemma (App A), HP witness insasi (AC2(b)), Proposition 1 (sirali
-      kompozisyon) ve locale tutarlilik yorumlamasi ISPATLI.
-    - Olasilik sinirlari (delta_A1, eps_SOE, alpha) SOYUT reel parametre olarak
-      girer; Clopper-Pearson Isabelle'de ISPATLANMAZ (olcumdur) -- sadece
-      union-bound aritmetigi ispatlanir.
-    - Geriye kalan tek acik = FAZ 3 (lifting), §7'de bilincli stub.
-    - 2026-09-01 (§8): statement-fidelity denetiminin iki "prose" kosesi kapatildi:
-      composition W/K_fwk formunda (hold, pert_bounded, locale cst_composition,
-      cst_conditional_W) + Prop 1 trace-zincirli (chain_ok, chain_extend,
-      chain_conditional). Toplam 115 fact, sorry YOK.
+  Status notes (PHASE 0 + PHASE 1 + PHASE 2 complete, NO sorry):
+    - ALL definitions in this layer are total and executable (verified by eval).
+    - The conditional theorem cst_conditional (Theorem 1, => direction) is PROVED;
+      the three bounding lemmas (App A), the HP witness construction (AC2(b)),
+      Proposition 1 (sequential composition) and the locale consistency
+      interpretation are PROVED.
+    - Probability bounds (delta_A1, eps_SOE, alpha) enter as ABSTRACT real
+      parameters; Clopper-Pearson is NOT PROVED in Isabelle (it is a measurement)
+      -- only the union-bound arithmetic is proved.
+    - The only remaining open item = PHASE 3 (lifting), a deliberate stub in §7.
+    - 2026-09-01 (§8): the two "prose" corners of the statement-fidelity audit closed:
+      composition in W/K_fwk form (hold, pert_bounded, locale cst_composition,
+      cst_conditional_W) + Prop 1 trace-chained (chain_ok, chain_extend,
+      chain_conditional). Total 115 facts, NO sorry.
 *)
 
 theory CST_Model
   imports Complex_Main "HOL-Library.Word"
 begin
 
-section \<open>1. Gozlemlenebilir yuzey ve trace (SOE 4-tuple + timing)\<close>
+section \<open>1. Observable surface and trace (SOE 4-tuple + timing)\<close>
 
 text \<open>
-  4-tuple gozlemlenebilir yuzey (extp.tex sec:soe): rip, exit_reason,
-  exit_qual, rax. Faz 0'da nat kullaniyoruz; ileride 64 word'e cevrilebilir.
+  4-tuple observable surface (extp.tex sec:soe): rip, exit_reason,
+  exit_qual, rax. In Phase 0 we use nat; it can later be converted to a 64-bit word.
 \<close>
 
 text \<open>
-  (e) GERCEK register genislikleri: VT-x/VMCS alanlari makine-word'udur.
-  rip / exit_qual / rax = 64-bit; exit_reason = 32-bit VMCS alani. Gozlemlenebilir
-  yuzey yalnizca ESITLIKLE karsilastirilir (soe_clause), dolayisiyla word'e cevirmek
-  TASMA RISKI TASIMAZ. timing = nat KALIR (TSC aritmetigi; wraparound bilincli
-  olarak kapsam disi -- fresh-boot disiplini kisa izler + oturum-ici reset saglar).
+  (e) ACTUAL register widths: VT-x/VMCS fields are machine words.
+  rip / exit_qual / rax = 64-bit; exit_reason = 32-bit VMCS field. The observable
+  surface is compared only by EQUALITY (soe_clause), so converting to word
+  CARRIES NO OVERFLOW RISK. timing REMAINS nat (TSC arithmetic; wraparound is
+  deliberately out of scope -- the fresh-boot discipline provides short traces +
+  in-session reset).
 \<close>
 
 record observable =
@@ -56,7 +58,7 @@ record observable =
   exit_qual   :: "64 word"
   rax         :: "64 word"
 
-text \<open>Bir VM-exit olayi: gozlemlenebilir 4-tuple + per-event timing \<open>\<Delta>\<^sub>i\<close> (cycle).\<close>
+text \<open>A VM-exit event: observable 4-tuple + per-event timing \<open>\<Delta>\<^sub>i\<close> (cycles).\<close>
 
 record event =
   obs    :: observable
@@ -68,12 +70,12 @@ definition aligned :: "trace \<Rightarrow> trace \<Rightarrow> bool" where
   "aligned To Tc \<longleftrightarrow> length To = length Tc"
 
 
-section \<open>2. Divergence detection fonksiyonu D\<close>
+section \<open>2. Divergence detection function D\<close>
 
 text \<open>
-  D'nin iki clause'u (App A, extp_formal_properties.md):
-    - SOE clause  : 4-tuple farki (deterministik, FPR = 0 under A4)
-    - timing clause: |Delta_cf - Delta_orig| > Dstar (olasiliksal, FPR <= alpha)
+  The two clauses of D (App A, extp_formal_properties.md):
+    - SOE clause  : 4-tuple difference (deterministic, FPR = 0 under A4)
+    - timing clause: |Delta_cf - Delta_orig| > Dstar (probabilistic, FPR <= alpha)
 \<close>
 
 definition soe_clause :: "trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
@@ -86,22 +88,22 @@ definition timing_clause :: "nat \<Rightarrow> trace \<Rightarrow> trace \<Right
 definition D :: "nat \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
   "D Dstar To Tc i \<longleftrightarrow> soe_clause To Tc i \<or> timing_clause Dstar To Tc i"
 
-text \<open>Iz uzerinde herhangi bir olayda divergence var mi?\<close>
+text \<open>Is there a divergence at any event on the trace?\<close>
 
 definition diverges :: "nat \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> bool" where
   "diverges Dstar To Tc \<longleftrightarrow> (\<exists>i < length Tc. D Dstar To Tc i)"
 
 
-subsection \<open>2.1 AC2(a) taniklarinin ayrismasi ve BAGIMSIZLIGI\<close>
+subsection \<open>2.1 Separation and INDEPENDENCE of the AC2(a) witnesses\<close>
 
 text \<open>
   App A item (iv): "The structural-clause version (4-tuple delta) and timing-clause
-  version each INDEPENDENTLY witness AC2(a)." Bu ifadeyi modele tasiyoruz:
-  D'nin iki clause'u iki AYRI tanik tipi; D = (en az bir tanik ateslenir).
+  version each INDEPENDENTLY witness AC2(a)." We carry this statement into the model:
+  the two clauses of D are two SEPARATE witness types; D = (at least one witness fires).
 
-  "Independently" ifadesi matematiksel olarak SU DEMEK: hicbiri digerini
-  gerektirmez. Bunu somut karsi-orneklerle ISPATLIYORUZ (asagida
-  witness_indep_*), yani bagimsizlik iddiasi prose'da kalmiyor.
+  Mathematically, "independently" MEANS: neither one entails the other.
+  We PROVE this with concrete counterexamples (witness_indep_* below),
+  so the independence claim does not remain in prose.
 \<close>
 
 datatype ac2a_witness = StructuralW | TimingW
@@ -119,7 +121,7 @@ lemma witnesses_timing [simp]:
   "witnesses TimingW Dstar To Tc i = timing_clause Dstar To Tc i"
   by (simp add: witnesses_def)
 
-text \<open>D, tanik varliginin tam karsiligidir (OR-clause yapisinin ayrismasi).\<close>
+text \<open>D is exactly the existence of a witness (separation of the OR-clause structure).\<close>
 
 lemma D_iff_witness:
   "D Dstar To Tc i \<longleftrightarrow> (\<exists>w. witnesses w Dstar To Tc i)"
@@ -141,7 +143,7 @@ next
   then show "D Dstar To Tc i" by (cases w) (simp_all add: D_def)
 qed
 
-text \<open>Her tanik TEK BASINA yeterlidir (each independently witnesses).\<close>
+text \<open>Each witness is sufficient ON ITS OWN (each independently witnesses).\<close>
 
 lemma structural_witness_suffices:
   "soe_clause To Tc i \<Longrightarrow> D Dstar To Tc i"
@@ -152,9 +154,9 @@ lemma timing_witness_suffices:
   by (simp add: D_def)
 
 text \<open>
-  Bir sweep, input basina bir SONUC verir: ya admissible claim (bir tanikla,
-  Some w) ya da D=false (sessiz, None). `emitted_of`, yalnizca admissible
-  claim'lerin tanik listesini cikarir -- sessiz input'lar DUSER.
+  A sweep yields one RESULT per input: either an admissible claim (with a witness,
+  Some w) or D=false (silent, None). `emitted_of` extracts the witness list of
+  admissible claims only -- silent inputs are DROPPED.
 \<close>
 
 definition emitted_of :: "ac2a_witness option list \<Rightarrow> ac2a_witness list" where
@@ -170,16 +172,16 @@ lemma emitted_of_Some [simp]: "emitted_of (Some w # xs) = w # emitted_of xs"
   by (simp add: emitted_of_def)
 
 
-subsection \<open>2.2 aligned: indeks guvenligi ve A4'un operasyonel ifadesi\<close>
+subsection \<open>2.2 aligned: index safety and the operational statement of A4\<close>
 
 lemma aligned_index_safe:
   "aligned To Tc \<Longrightarrow> i < length Tc \<Longrightarrow> i < length To"
   by (simp add: aligned_def)
 
 text \<open>
-  A4'un operasyonel ifadesi (extp.tex sec:soe): mudahale yokken hizalanmis
-  izlerde 4-tuple noktasal olarak esittir. `aligned` burada gercekten is yapar:
-  her iki izde de i-inci olay MEVCUTTUR.
+  The operational statement of A4 (extp.tex sec:soe): with no intervention, aligned
+  traces are pointwise equal on the 4-tuple. `aligned` does real work here:
+  the i-th event EXISTS in both traces.
 \<close>
 
 lemma no_divergence_obs_eq:
@@ -194,58 +196,58 @@ proof (intro allI impI conjI)
 qed
 
 
-section \<open>3. Intervention modeli ve validity envelope E\<close>
+section \<open>3. Intervention model and validity envelope E\<close>
 
 datatype scope = PerEvent | PerWindow | Global
 
 datatype iclass = NopCount | RegWrite | InputValue | CachePreload
 
 text \<open>
-  do(X = x') at event i. X ve x' Faz 0'da nat ID/deger; icls = mudahale sinifi.
+  do(X = x') at event i. In Phase 0, X and x' are nat ID/value; icls = intervention class.
   (CST doc sec:2.2 intervention surface.)
 \<close>
 
 record intervention =
-  var      :: nat      \<comment> \<open>hedef degisken X'in ID'si\<close>
+  var      :: nat      \<comment> \<open>ID of the target variable X\<close>
   newval   :: nat      \<comment> \<open>x'\<close>
-  at_event :: nat      \<comment> \<open>e_i indeksi\<close>
+  at_event :: nat      \<comment> \<open>index of e_i\<close>
   icls     :: iclass
 
 text \<open>
-  Validity envelope E (extp.tex sec:cst, CST doc sec:3.4): in-scope /
-  out-of-scope sentinel'lariyla bir record. s_in = valide mudahale yuzeyi
-  (S_in), s_out = disaridaki sessiz kanallar (S_out).
+  Validity envelope E (extp.tex sec:cst, CST doc sec:3.4): a record with in-scope /
+  out-of-scope sentinels. s_in = validated intervention surface
+  (S_in), s_out = the silent channels outside (S_out).
 \<close>
 
 record envelope =
-  instr    :: nat          \<comment> \<open>timing enstruman ID'si (S1 / S2)\<close>
-  wl_class :: nat          \<comment> \<open>workload sinifi\<close>
-  gw_type  :: nat          \<comment> \<open>guest-workload tipi\<close>
+  instr    :: nat          \<comment> \<open>timing-instrument ID (S1 / S2)\<close>
+  wl_class :: nat          \<comment> \<open>workload class\<close>
+  gw_type  :: nat          \<comment> \<open>guest-workload type\<close>
   scp      :: scope
   s_in     :: "nat set"
   s_out    :: "nat set"
 
 text \<open>
-  CST v1.0 kapsam predikati (extp.tex sec:intervention adim 1):
-  yalnizca per-event scope ve dort valide mudahale sinifi.
+  CST v1.0 scope predicate (extp.tex sec:intervention step 1):
+  only per-event scope and the four validated intervention classes.
 \<close>
 
 definition cst_v1_covered :: "envelope \<Rightarrow> intervention \<Rightarrow> bool" where
   "cst_v1_covered E \<iota> \<longleftrightarrow>
      scp E = PerEvent \<and>
      icls \<iota> \<in> {NopCount, RegWrite, InputValue, CachePreload} \<and>
-     s_in E \<inter> s_out E = {}"          \<comment> \<open>S_in ve S_out disjoint (wf kosulu)\<close>
+     s_in E \<inter> s_out E = {}"          \<comment> \<open>S_in and S_out disjoint (wf condition)\<close>
 
 
-subsection \<open>3.1 do-operatorunun anlambilimi (Pearl severance)\<close>
+subsection \<open>3.1 Semantics of the do-operator (Pearl severance)\<close>
 
 text \<open>
-  Pearl's do(X=x') "X'i x'e zorlar, X'e giden tum nedensel baglantilari keser"
-  (extp.tex sec:background; App A item i "effectiveness"). Guest durumunu
-  degisken-degeri valuation'i olarak modelliyoruz; apply_iv, X'i x'e set eden
-  fonksiyonel guncelleme. Effectiveness = mudahale sonrasi X'in x' okunmasi;
-  severance = sonucun X'in ONCEKI degerinden BAGIMSIZ olmasi + diger
-  degiskenlere DOKUNMAMASI (modularity/composition ile baglantili).
+  Pearl's do(X=x') "forces X to x' and severs all causal links into X"
+  (extp.tex sec:background; App A item i "effectiveness"). We model the guest
+  state as a variable-to-value valuation; apply_iv is the functional update that
+  sets X to x'. Effectiveness = X reads x' after the intervention;
+  severance = the result is INDEPENDENT of X's PREVIOUS value + the other
+  variables are NOT TOUCHED (connected to modularity/composition).
 \<close>
 
 type_synonym valuation = "nat \<Rightarrow> nat"
@@ -256,23 +258,23 @@ definition apply_iv :: "intervention \<Rightarrow> valuation \<Rightarrow> valua
 definition effective :: "intervention \<Rightarrow> bool" where
   "effective \<iota> \<longleftrightarrow> (\<forall>\<sigma>. apply_iv \<iota> \<sigma> (var \<iota>) = newval \<iota>)"
 
-text \<open>Effectiveness: do() X'i basariyla x'e set eder.\<close>
+text \<open>Effectiveness: do() successfully sets X to x'.\<close>
 lemma apply_iv_severs: "apply_iv \<iota> \<sigma> (var \<iota>) = newval \<iota>"
   by (simp add: apply_iv_def)
 
-text \<open>Locality: X disindaki degiskenler degismez (do() yalnizca X'e giren oklari keser).\<close>
+text \<open>Locality: variables other than X are unchanged (do() severs only the arrows into X).\<close>
 lemma apply_iv_local: "y \<noteq> var \<iota> \<Longrightarrow> apply_iv \<iota> \<sigma> y = \<sigma> y"
   by (simp add: apply_iv_def)
 
-text \<open>Severance: X'in mudahale-sonrasi degeri, ONCEKI degerinden bagimsiz.\<close>
+text \<open>Severance: X's post-intervention value is independent of its PREVIOUS value.\<close>
 lemma apply_iv_indep_pre: "apply_iv \<iota> \<sigma> (var \<iota>) = apply_iv \<iota> \<sigma>' (var \<iota>)"
   by (simp add: apply_iv_def)
 
-text \<open>Effectiveness insaat geregi her mudahale icin gecerli.\<close>
+text \<open>Effectiveness holds by construction for every intervention.\<close>
 lemma effective_holds: "effective \<iota>"
   by (simp add: effective_def apply_iv_severs)
 
-text \<open>Somut ornek: reg_7 := 42; hedef zorlanir, komsu degisken (3) korunur.\<close>
+text \<open>Concrete example: reg_7 := 42; the target is forced, the neighbouring variable (3) is preserved.\<close>
 lemma sanity_effective_forces:
   "apply_iv \<lparr> var = 7, newval = 42, at_event = 0, icls = RegWrite \<rparr> (\<lambda>_. 0) 7 = 42"
   by eval
@@ -282,36 +284,36 @@ lemma sanity_effective_local:
   by eval
 
 
-section \<open>4. Dort-adimli admissibility check\<close>
+section \<open>4. Four-step admissibility check\<close>
 
 text \<open>
-  extp.tex sec:intervention: claim yayinlanmadan once dort adim.
-    (1) E'nin bilesenleri CST v1.0 kapsamiyla eslesir
-    (2) A1-A4 assumption referanslari mevcut ve guncel   (assum_ok flag)
-    (3) D = true bir olayda gercekten gozlemlendi
-    (4) X valide mudahale yuzeyinde (var in S_in)
-  Herhangi biri false -> claim yok (structured invalidity tag).
+  extp.tex sec:intervention: four steps before a claim is emitted.
+    (1) the components of E match the CST v1.0 scope
+    (2) the A1-A4 assumption references are present and current   (assum_ok flag)
+    (3) D = true was actually observed at some event
+    (4) X is on the validated intervention surface (var in S_in)
+  Any one false -> no claim (structured invalidity tag).
 \<close>
 
 definition admissible ::
     "nat \<Rightarrow> envelope \<Rightarrow> intervention \<Rightarrow> bool \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> bool" where
   "admissible Dstar E \<iota> assum_ok To Tc \<longleftrightarrow>
-     cst_v1_covered E \<iota>           \<comment> \<open>adim 1\<close>
-   \<and> assum_ok                        \<comment> \<open>adim 2\<close>
-   \<and> diverges Dstar To Tc           \<comment> \<open>adim 3\<close>
-   \<and> var \<iota> \<in> s_in E"                \<comment> \<open>adim 4\<close>
+     cst_v1_covered E \<iota>           \<comment> \<open>step 1\<close>
+   \<and> assum_ok                        \<comment> \<open>step 2\<close>
+   \<and> diverges Dstar To Tc           \<comment> \<open>step 3\<close>
+   \<and> var \<iota> \<in> s_in E"                \<comment> \<open>step 4\<close>
 
 text \<open>
-  Claim emission = admissible (extp.tex: check gecerse EXTp claim yayinlar,
-  aksi halde invalidity tag). Boylece Teorem 1'in (<=) yonu -- "check gecti
-  => claim yayinlandi" -- INSAAT GEREGI (definitional) dogru.
+  Claim emission = admissible (extp.tex: if the check passes EXTp emits a claim,
+  otherwise an invalidity tag). Hence the (<=) direction of Theorem 1 -- "check
+  passed => claim emitted" -- is true BY CONSTRUCTION (definitional).
 \<close>
 
 definition emits ::
     "nat \<Rightarrow> envelope \<Rightarrow> intervention \<Rightarrow> bool \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> bool" where
   "emits Dstar E \<iota> assum_ok To Tc \<longleftrightarrow> admissible Dstar E \<iota> assum_ok To Tc"
 
-lemma left_direction:  \<comment> \<open>Teorem 1, (<=) yonu -- FAZ 1, insaat geregi\<close>
+lemma left_direction:  \<comment> \<open>Theorem 1, (<=) direction -- PHASE 1, by construction\<close>
   "emits Dstar E \<iota> assum_ok To Tc \<longleftrightarrow> admissible Dstar E \<iota> assum_ok To Tc"
   by (simp add: emits_def)
 
@@ -326,77 +328,78 @@ definition ex_orig :: trace where
   "ex_orig = [ ev 10 1 0 5 1000, ev 14 2 0 5 1050 ]"
 
 text \<open>
-  Sanity check'ler ISPATLANMIS gercekler olarak (by eval) -- modelin dogru
-  hesapladigini makine dogrular, yalnizca "typecheck ediyor" degil.
+  Sanity checks as PROVED facts (by eval) -- the machine verifies that the model
+  computes correctly, not merely that it "typechecks".
 \<close>
 
-text \<open>Ayni iz, intervention yok -> divergence yok.\<close>
+text \<open>Same trace, no intervention -> no divergence.\<close>
 lemma sanity_no_divergence: "\<not> diverges 500 ex_orig ex_orig"
   by eval
 
-text \<open>rax @1 degisti (SOE clause) -> divergence var.\<close>
+text \<open>rax @1 changed (SOE clause) -> divergence.\<close>
 lemma sanity_soe_clause:
   "diverges 500 ex_orig [ ev 10 1 0 5 1000, ev 14 2 0 9 1050 ]"
   by eval
 
-text \<open>timing @0 +2000 cycle sicradi, Dstar=500 (timing clause) -> True.\<close>
+text \<open>timing @0 jumped +2000 cycles, Dstar=500 (timing clause) -> True.\<close>
 lemma sanity_timing_clause:
   "diverges 500 ex_orig [ ev 10 1 0 5 3000, ev 14 2 0 5 1050 ]"
   by eval
 
-text \<open>timing @0 +400 cycle, Dstar=500 (esik altinda) -> divergence yok.\<close>
+text \<open>timing @0 +400 cycles, Dstar=500 (below threshold) -> no divergence.\<close>
 lemma sanity_below_threshold:
   "\<not> diverges 500 ex_orig [ ev 10 1 0 5 1400, ev 14 2 0 5 1050 ]"
   by eval
 
 
-subsection \<open>5.1 Tanik BAGIMSIZLIGI -- somut karsi-orneklerle ispat\<close>
+subsection \<open>5.1 Witness INDEPENDENCE -- proof by concrete counterexamples\<close>
 
 text \<open>
-  "Each INDEPENDENTLY witnesses AC2(a)" iddiasinin matematiksel icerigi:
-  hicbir clause digerini GEREKTIRMEZ. Iki karsi-ornek bunu kesin olarak kurar.
+  The mathematical content of the claim "Each INDEPENDENTLY witnesses AC2(a)":
+  neither clause ENTAILS the other. Two counterexamples establish this definitively.
 \<close>
 
-definition ex_soe_only :: trace where    \<comment> \<open>rax @1 farkli, timing AYNI\<close>
+definition ex_soe_only :: trace where    \<comment> \<open>rax @1 differs, timing SAME\<close>
   "ex_soe_only = [ ev 10 1 0 5 1000, ev 14 2 0 9 1050 ]"
 
-definition ex_tim_only :: trace where    \<comment> \<open>timing @0 farkli, 4-tuple AYNI\<close>
+definition ex_tim_only :: trace where    \<comment> \<open>timing @0 differs, 4-tuple SAME\<close>
   "ex_tim_only = [ ev 10 1 0 5 3000, ev 14 2 0 5 1050 ]"
 
-text \<open>(1) Yapisal tanik ateslenir, zamanlama tanigi ATESLENMEZ.\<close>
+text \<open>(1) The structural witness fires, the timing witness does NOT.\<close>
 lemma witness_indep_structural:
   "witnesses StructuralW 500 ex_orig ex_soe_only 1
    \<and> \<not> witnesses TimingW 500 ex_orig ex_soe_only 1"
   by eval
 
-text \<open>(2) Zamanlama tanigi ateslenir, yapisal tanik ATESLENMEZ.\<close>
+text \<open>(2) The timing witness fires, the structural witness does NOT.\<close>
 lemma witness_indep_timing:
   "witnesses TimingW 500 ex_orig ex_tim_only 0
    \<and> \<not> witnesses StructuralW 500 ex_orig ex_tim_only 0"
   by eval
 
 text \<open>
-  Sonuc: iki tanik mantiksal olarak BAGIMSIZ -- ne biri digerini gerektirir,
-  ne de ortak bir clause'a indirgenebilirler. Dolayisiyla D'nin OR yapisi
-  gercekten iki AYRI kanidir, tek kanitin iki yazilisi degil.
+  Result: the two witnesses are logically INDEPENDENT -- neither entails the other,
+  nor can they be reduced to a common clause. Hence the OR structure of D
+  really is two SEPARATE pieces of evidence, not two spellings of one.
 \<close>
 
-subsection \<open>5.2 A2 TAUTOLOJI DEGIL -- yanlislanabilirligin somut kaniti\<close>
+subsection \<open>5.2 A2 is NOT A TAUTOLOGY -- concrete evidence of falsifiability\<close>
 
 text \<open>
-  Reviewer itirazi: "A2, D'nin tanimini tekrar etmiyor mu? Yani tautoloji mi?"
-  CEVAP: Hayir. A2 gercek, YANLISLANABILIR bir iddiadir -- cunku GERCEK bir
-  durum farkinin D'ye HIC yansimadigi durumlar VARDIR. Asagida somut bir tane:
-  timing @0'da 400 cycle fark var (gercek bir pertürbasyon), ama Dstar=500
-  esiginin ALTINDA oldugu icin D ateslenmiyor.
+  Reviewer objection: "Does A2 not merely restate the definition of D? I.e. is
+  it a tautology?"
+  ANSWER: No. A2 is a genuine, FALSIFIABLE claim -- because there ARE cases in
+  which a REAL state difference is NOT reflected in D at all. A concrete one below:
+  timing @0 differs by 400 cycles (a real perturbation), but D does not fire
+  because it is BELOW the Dstar=500 threshold.
 
-  Eger boyle bir fark S_in ICINDE bir nedensel etki olsaydi, A2 IHLAL edilirdi.
-  Demek ki A2 bos bir ifade degil: dunyaya dair bir sey soyluyor ve yanlis
-  cikabilir. (Bu, App A'nin "silent leak" / sub-Dstar sinif tartismasinin
-  makine-kontrollu karsiligidir.)
+  If such a difference were a causal effect INSIDE S_in, A2 would be VIOLATED.
+  So A2 is not an empty statement: it says something about the world and can
+  turn out to be false. (This is the machine-checked counterpart of App A's
+  "silent leak" / sub-Dstar class discussion.)
 \<close>
 
-definition ex_silent :: trace where   \<comment> \<open>timing @0 +400: GERCEK fark, D'ye yansimaz\<close>
+definition ex_silent :: trace where   \<comment> \<open>timing @0 +400: a REAL difference, not reflected in D\<close>
   "ex_silent = [ ev 10 1 0 5 1400, ev 14 2 0 5 1050 ]"
 
 lemma silent_effect_exists:
@@ -405,7 +408,7 @@ lemma silent_effect_exists:
   by eval
 
 text \<open>
-  Ayrica: bu fark 4-tuple yuzeyinde de gorunmez -- yani her iki clause da sessiz.
+  Moreover: this difference is invisible on the 4-tuple surface as well -- i.e. both clauses are silent.
 \<close>
 
 lemma silent_effect_invisible_on_both_clauses:
@@ -420,52 +423,53 @@ lemma witnesses_logically_independent:
   using witness_indep_structural witness_indep_timing by blast
 
 
-section \<open>6. CST assumption locale (A1-A4) -- FAZ 2: kosullu teorem\<close>
+section \<open>6. CST assumption locale (A1-A4) -- PHASE 2: conditional theorem\<close>
 
 text \<open>
-  A1-A4 (extp.tex Table tab:assumptions) SOYUT predicate; olasilik sinirlari
-  SOYUT reel parametre. p_soe / p_tim / p_conf = App A'nin uc bounding
-  argumanindaki OLCULEN (bilinmeyen) katki miktarlari; A1/A3/A4 assumption'lari
-  onlari eps_SOE / alpha / (delta_A1+alpha) ile SINIRLAR. Isabelle bu reel
-  sayilari uretmez -- Clopper-Pearson / MI kalibrasyonundan disaridan girer;
-  teorem yalnizca union-bound aritmetigi + mantiksal kompozisyon ustunde calisir.
+  A1-A4 (extp.tex Table tab:assumptions) are ABSTRACT predicates; the probability
+  bounds are ABSTRACT real parameters. p_soe / p_tim / p_conf = the MEASURED
+  (unknown) contribution amounts in App A's three bounding arguments; the
+  A1/A3/A4 assumptions BOUND them by eps_SOE / alpha / (delta_A1+alpha). Isabelle
+  does not produce these reals -- they enter from outside, from the
+  Clopper-Pearson / MI calibration; the theorem operates only on union-bound
+  arithmetic + logical composition.
 
-  eff_vars E = olayda "etkiyi olusturan" gozlemlenebilir yuzey degiskenleri
-  (HP witness insasinda W = S_in \ eff_vars).
+  eff_vars E = the observable-surface variables that "constitute the effect" in
+  the event (in the HP witness construction, W = S_in \ eff_vars).
 \<close>
 
 locale cst_assumptions =
   fixes Dstar    :: nat
-    and delta_A1 :: real        \<comment> \<open>CapSep ampirik zarfi (A1)\<close>
-    and eps_SOE  :: real        \<comment> \<open>SOE Clopper-Pearson ust siniri (A4)\<close>
+    and delta_A1 :: real        \<comment> \<open>CapSep empirical envelope (A1)\<close>
+    and eps_SOE  :: real        \<comment> \<open>SOE Clopper-Pearson upper bound (A4)\<close>
     and alpha    :: real        \<comment> \<open>MI realized FPR (A3)\<close>
     and A1 :: "envelope \<Rightarrow> intervention \<Rightarrow> bool"   \<comment> \<open>modularity\<close>
     and A2 :: "envelope \<Rightarrow> intervention \<Rightarrow> bool"   \<comment> \<open>observational completeness / S_in\<close>
     and A3 :: "envelope \<Rightarrow> intervention \<Rightarrow> bool"   \<comment> \<open>confounder bound < Dstar\<close>
     and A4 :: "envelope \<Rightarrow> intervention \<Rightarrow> bool"   \<comment> \<open>replay determinism (SOE)\<close>
-    and p_soe  :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>SOE-clause coincidence katkisi\<close>
-    and p_tim  :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>timing-clause coincidence katkisi\<close>
-    and p_conf :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>confounder katkisi (modulo A1)\<close>
-    and eff_vars :: "envelope \<Rightarrow> nat set"           \<comment> \<open>etkiyi olusturan yuzey degiskenleri\<close>
+    and p_soe  :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>SOE-clause coincidence contribution\<close>
+    and p_tim  :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>timing-clause coincidence contribution\<close>
+    and p_conf :: "envelope \<Rightarrow> intervention \<Rightarrow> real"  \<comment> \<open>confounder contribution (modulo A1)\<close>
+    and eff_vars :: "envelope \<Rightarrow> nat set"           \<comment> \<open>surface variables that produce the effect\<close>
     and effect_at :: "envelope \<Rightarrow> intervention \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool"
-        \<comment> \<open>YER ALTINDAKI nedensel etki -- D DEGIL; bagimsiz belirtilmis\<close>
+        \<comment> \<open>the UNDERLYING causal effect -- NOT D; specified independently\<close>
   assumes prob_nonneg: "0 \<le> delta_A1" "0 \<le> eps_SOE" "0 \<le> alpha"
       and prob_le_one:  "delta_A1 \<le> 1" "eps_SOE \<le> 1" "alpha \<le> 1"
       and A4_bounds_soe:  "\<And>E \<iota>. A4 E \<iota> \<Longrightarrow> 0 \<le> p_soe E \<iota> \<and> p_soe E \<iota> \<le> eps_SOE"
       and A3_bounds_tim:  "\<And>E \<iota>. A3 E \<iota> \<Longrightarrow> 0 \<le> p_tim E \<iota> \<and> p_tim E \<iota> \<le> alpha"
       and A1_bounds_conf: "\<And>E \<iota>. A1 E \<iota> \<Longrightarrow> 0 \<le> p_conf E \<iota> \<and> p_conf E \<iota> \<le> delta_A1 + alpha"
       and eff_subset:     "\<And>E. eff_vars E \<subseteq> s_in E"
-      \<comment> \<open>A2'nin OPERASYONEL icerigi: S_in ICINDEKI her nedensel etki D'ye yansir.
-          Dikkat: `var \<iota> \<in> s_in E` GUARD'i sart -- A2, S_out hakkinda HICBIR
-          sey soylemez (App A: "explicitly out of A2's scope").\<close>
+      \<comment> \<open>A2's OPERATIONAL content: every causal effect INSIDE S_in is reflected in D.
+          Note: the guard `var \<iota> \<in> s_in E` is essential -- A2 says NOTHING
+          about S_out (App A: "explicitly out of A2's scope").\<close>
       and A2_manifests:
         "\<And>E \<iota> To Tc i. A2 E \<iota> \<Longrightarrow> var \<iota> \<in> s_in E
                         \<Longrightarrow> effect_at E \<iota> To Tc i \<Longrightarrow> D Dstar To Tc i"
 begin
 
 text \<open>
-  App A'nin claim basina rapor ettigi kalinti epistemik zarf:
-  residual = eps_SOE + delta_A1 + alpha (union bound). AC2(b) W2 kosulunun siniri.
+  The residual epistemic envelope App A reports per claim:
+  residual = eps_SOE + delta_A1 + alpha (union bound). The bound of the AC2(b) W2 condition.
 \<close>
 
 definition residual :: real where
@@ -478,12 +482,12 @@ lemma residual_le_three: "residual \<le> 3"
   using prob_le_one by (simp add: residual_def)
 
 
-subsection \<open>6.1 Bounding lemmalari (App A) -- ispatli\<close>
+subsection \<open>6.1 Bounding lemmas (App A) -- proved\<close>
 
 text \<open>
-  App A'daki uc "bounding" argumani. Her biri, ilgili assumption'in katki
-  miktarina koydugu ust siniri disari verir; ispat, locale assumption'larindan
-  dogrudan cikar.
+  The three "bounding" arguments of App A. Each one exports the upper bound that
+  the corresponding assumption places on its contribution amount; the proof
+  follows directly from the locale assumptions.
 \<close>
 
 \<comment> \<open>App A lem:coincidence-soe\<close>
@@ -505,20 +509,20 @@ lemma confounder_bound:
 subsection \<open>6.15 Lemma silent -- scope-honest emission (App A lem:silent)\<close>
 
 text \<open>
-  App A'nin "Remark on lemma content" uyarisi: lemmanin icerigi "A2 kendi
-  kapsamini ima eder" (bu DEFINITIONAL olurdu) DEGIL; iki BAGIMSIZ belirtilmis
-  bilesenin -- A2 (neyin gozlemlenebilir oldugu) ve emission policy (hangi
-  gozlem altinda claim yayinlandigi) -- TUTARLILIGIDIR.
+  App A's "Remark on lemma content" caveat: the content of the lemma is NOT
+  "A2 implies its own scope" (that would be DEFINITIONAL); it is the CONSISTENCY
+  of two INDEPENDENTLY specified components -- A2 (what is observable) and the
+  emission policy (under which observation a claim is emitted).
 
-  Modelde bu bagimsizlik YAPISALDIR:
-    - `emits` / `admissible` TOP-LEVEL tanimlar; A2'ye HIC referans vermezler.
-    - `A2` + `effect_at` locale PARAMETRELERIDIR; emission'a referans vermezler.
-  Asagidaki iki lemma bu iki bagimsiz bileseni birbirine baglar.
+  In the model this independence is STRUCTURAL:
+    - `emits` / `admissible` are TOP-LEVEL definitions; they make NO reference to A2.
+    - `A2` + `effect_at` are locale PARAMETERS; they make no reference to emission.
+  The two lemmas below tie these two independent components together.
 \<close>
 
 text \<open>
-  (i) SOUNDNESS yonu: gozlemlenebilir divergence OLMADAN claim yayinlanmaz.
-  Emission policy'nin kendi yapisindan gelir (A2 gerekmez).
+  (i) SOUNDNESS direction: no claim is emitted WITHOUT observable divergence.
+  Follows from the structure of the emission policy itself (A2 not needed).
 \<close>
 
 lemma emits_implies_divergence:
@@ -526,8 +530,8 @@ lemma emits_implies_divergence:
   by (simp add: emits_def admissible_def)
 
 text \<open>
-  (ii) SCOPE-COMPLETENESS yonu: S_in ICINDEKI hicbir nedensel etki
-  RAPORSUZ kalmaz. A2 burada GERCEKTEN is yapar -- kaldirilirsa lemma cokerdi.
+  (ii) SCOPE-COMPLETENESS direction: no causal effect INSIDE S_in goes
+  UNREPORTED. Here A2 GENUINELY does work -- remove it and the lemma collapses.
 \<close>
 
 lemma silent_no_missed_effect:
@@ -540,8 +544,8 @@ proof -
 qed
 
 text \<open>
-  (iii) Tam bicim: envelope adimlari gecerken S_in-ici bir etki VARSA,
-  claim MUTLAKA yayinlanir. "No in-scope effect goes unreported."
+  (iii) Full form: while the envelope steps hold, if there IS an in-S_in effect,
+  the claim is NECESSARILY emitted. "No in-scope effect goes unreported."
 \<close>
 
 lemma silent_emission_complete:
@@ -554,11 +558,11 @@ lemma silent_emission_complete:
   by simp
 
 text \<open>
-  (iv) S_out KAPSAM DISI: A2'nin guard'i `var \<iota> \<in> s_in E`. Guard saglanmazsa
-  A2_manifests HICBIR sey vermez -- yani CST, S_out uzerinden gerceklesen
-  etkiler icin sessiz kalir ve bu bir SOUNDNESS iddiasi degil, KAPSAM ifadesidir.
-  Asagida, claim yayinlanmadigi durumda gozlemlenebilir divergence de
-  olmadigini gosteriyoruz (scope-honest silence).
+  (iv) S_out is OUT OF SCOPE: A2's guard is `var \<iota> \<in> s_in E`. If the guard is not
+  met, A2_manifests yields NOTHING -- i.e. CST stays silent about effects that
+  materialize via S_out, and this is not a SOUNDNESS claim but a SCOPE statement.
+  Below we show that when no claim is emitted there is no observable
+  divergence either (scope-honest silence).
 \<close>
 
 lemma scope_honest_silence:
@@ -566,19 +570,19 @@ lemma scope_honest_silence:
   using emits_implies_divergence by blast
 
 
-subsection \<open>6.16 Silent-leak sinifi = scope siniri (adim i)\<close>
+subsection \<open>6.16 Silent-leak class = scope boundary (step i)\<close>
 
 text \<open>
-  MI'in sub-Delta* silent-leak sinifi (extp.tex sec:mi; sec:cst Threat 2): do(x')
-  gozlemlenebilir yuzeyde HICBIR clause atesletmeyen bir etki uretebilir. Paper
-  bunlari "explicitly deferred to a future CMD property class" diyor. Burada bu
-  ifadeyi PROSE'dan KANITLANMIS BIR SCOPE-SINIRINA ceviriyoruz:
+  MI's sub-Delta* silent-leak class (extp.tex sec:mi; sec:cst Threat 2): do(x')
+  can produce an effect that fires NO clause on the observable surface. The paper
+  calls these "explicitly deferred to a future CMD property class". Here we turn
+  that statement from PROSE into a PROVED SCOPE BOUNDARY:
 
-    A2 altinda, S_in ICINDE sessiz sizinti IMKANSIZDIR; dolayisiyla her sessiz
-    sizinti ZORUNLU olarak S_out'tadir (var iota ∉ s_in E). Yani CST'nin scope
-    siniri sadece ilan edilmiyor, assumption yapisi tarafindan ZORLANIYOR.
+    Under A2, a silent leak INSIDE S_in is IMPOSSIBLE; hence every silent leak
+    is NECESSARILY in S_out (var iota ∉ s_in E). I.e. CST's scope boundary is
+    not merely declared, it is ENFORCED by the assumption structure.
 
-  Sessiz sizinti = etki var, ama D'nin HER IKI clause'u da sessiz.
+  Silent leak = an effect exists, but BOTH clauses of D are silent.
 \<close>
 
 definition silent_leak :: "trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
@@ -587,7 +591,7 @@ definition silent_leak :: "trace \<Rightarrow> trace \<Rightarrow> nat \<Rightar
 lemma silent_leak_iff_not_D: "silent_leak To Tc i \<longleftrightarrow> \<not> D Dstar To Tc i"
   by (auto simp: silent_leak_def D_def)
 
-text \<open>(i.1) A2, S_in-ICI sessiz sizintiyi YASAKLAR (etkinin kendi olayinda).\<close>
+text \<open>(i.1) A2 FORBIDS a silent leak INSIDE S_in (in the event of the effect itself).\<close>
 
 lemma A2_forbids_inscope_silent_leak:
   assumes "A2 E \<iota>" "var \<iota> \<in> s_in E"
@@ -598,7 +602,7 @@ proof -
   with assms(4) show False by (simp add: silent_leak_iff_not_D)
 qed
 
-text \<open>(i.2) ASIL SONUC: her sessiz sizinti ZORUNLU olarak scope-disidir (S_out).\<close>
+text \<open>(i.2) MAIN RESULT: every silent leak is NECESSARILY out of scope (S_out).\<close>
 
 theorem silent_leak_only_out_of_scope:
   assumes "A2 E \<iota>" and "effect_at E \<iota> To Tc i" and "silent_leak To Tc i"
@@ -606,8 +610,8 @@ theorem silent_leak_only_out_of_scope:
   using A2_forbids_inscope_silent_leak[OF assms(1) _ assms(2,3)] by blast
 
 text \<open>
-  (i.3) Kontrapozitif: eger etki S_in'deyse ve A2 gecerliyse, o etki SESSIZ
-  OLAMAZ -- D'nin en az bir clause'u ateslenir (gozlemlenebilir olmak zorunda).
+  (i.3) Contrapositive: if the effect is in S_in and A2 holds, that effect CANNOT
+  BE SILENT -- at least one clause of D fires (it must be observable).
 \<close>
 
 corollary inscope_effect_is_observable:
@@ -616,12 +620,12 @@ corollary inscope_effect_is_observable:
   using A2_manifests[OF assms] by (simp add: D_def)
 
 
-subsection \<open>6.2 HP witness insasi (App A item iv) -- ispatli\<close>
+subsection \<open>6.2 HP witness construction (App A item iv) -- proved\<close>
 
 text \<open>
-  W = S_in \ eff_vars (App A: "W = S_in \ observable(.)_i"). W2 (fixity-does-not-mask)
-  kosulunun ihlal olasiligi = mask_prob = p_soe + p_conf, union-bound ile
-  residual'a baglanir.
+  W = S_in \ eff_vars (App A: "W = S_in \ observable(.)_i"). The probability of
+  violating the W2 (fixity-does-not-mask) condition = mask_prob = p_soe + p_conf,
+  tied to the residual via the union bound.
 \<close>
 
 definition witness_W :: "envelope \<Rightarrow> nat set" where
@@ -633,7 +637,7 @@ definition mask_prob :: "envelope \<Rightarrow> intervention \<Rightarrow> real"
 lemma witness_W_subset: "witness_W E \<subseteq> s_in E"
   by (simp add: witness_W_def)
 
-\<comment> \<open>W2 union bound: mask olasiligi <= residual\<close>
+\<comment> \<open>W2 union bound: masking probability <= residual\<close>
 lemma w2_residual_bound:
   assumes "A1 E \<iota>" "A4 E \<iota>"
   shows "mask_prob E \<iota> \<le> residual"
@@ -647,33 +651,33 @@ lemma mask_prob_nonneg:
   unfolding mask_prob_def by linarith
 
 
-subsection \<open>6.3 Pearl/HP korespondans predikatlari -- somut\<close>
+subsection \<open>6.3 Pearl/HP correspondence predicates -- concrete\<close>
 
 text \<open>
-  Effectiveness artik §3.1'deki top-level \<open>effective\<close> (do-operator anlambilimi);
-  \<open>True\<close> placeholder'i kaldirildi. Burada yalnizca composition/AC predikatlari.
+  Effectiveness is now the top-level \<open>effective\<close> of §3.1 (do-operator semantics);
+  the \<open>True\<close> placeholder has been removed. Here only the composition/AC predicates.
 \<close>
 
-\<comment> \<open>delta_A1-relaxed composition: cerceve-ici pertürbasyon delta_A1+alpha ile sinirli\<close>
+\<comment> \<open>delta_A1-relaxed composition: in-framework perturbation bounded by delta_A1+alpha\<close>
 definition composition_relaxed :: "envelope \<Rightarrow> intervention \<Rightarrow> bool" where
   "composition_relaxed E \<iota> \<longleftrightarrow> p_conf E \<iota> \<le> delta_A1 + alpha"
 
-\<comment> \<open>HP AC1: etki D, Tcf'de olay i'de mevcut\<close>
+\<comment> \<open>HP AC1: the effect D is present at event i in Tcf\<close>
 definition ac1 :: "trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
   "ac1 To Tc i \<longleftrightarrow> D Dstar To Tc i"
 
-\<comment> \<open>HP AC2(a): counterfactual sensitivity -- D'nin dordunclu admissibility adimi\<close>
+\<comment> \<open>HP AC2(a): counterfactual sensitivity -- D's fourth admissibility step\<close>
 definition ac2a :: "trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
   "ac2a To Tc i \<longleftrightarrow> D Dstar To Tc i"
 
-\<comment> \<open>AC2(a)'nin TANIK-INDEKSLI hali (App A: "each independently witness")\<close>
+\<comment> \<open>WITNESS-INDEXED form of AC2(a) (App A: "each independently witness")\<close>
 definition ac2a_wit :: "ac2a_witness \<Rightarrow> trace \<Rightarrow> trace \<Rightarrow> nat \<Rightarrow> bool" where
   "ac2a_wit w To Tc i \<longleftrightarrow> witnesses w Dstar To Tc i"
 
 lemma ac2a_iff_wit: "ac2a To Tc i \<longleftrightarrow> (\<exists>w. ac2a_wit w To Tc i)"
   unfolding ac2a_def ac2a_wit_def by (rule D_iff_witness)
 
-\<comment> \<open>HP AC2(b): W1 (A4 ile fixity) + W ⊆ S_in + W2 (mask <= residual)\<close>
+\<comment> \<open>HP AC2(b): W1 (fixity via A4) + W ⊆ S_in + W2 (mask <= residual)\<close>
 definition ac2b :: "envelope \<Rightarrow> intervention \<Rightarrow> bool" where
   "ac2b E \<iota> \<longleftrightarrow> A4 E \<iota> \<and> witness_W E \<subseteq> s_in E \<and> mask_prob E \<iota> \<le> residual"
 
@@ -687,19 +691,20 @@ lemma ac2b_holds:
   using assms(2) witness_W_subset w2_residual_bound[OF assms(1) assms(2)] by simp
 
 
-subsection \<open>6.35 TANIK-BASINA hata zarfi -- YENI analitik icerik\<close>
+subsection \<open>6.35 PER-WITNESS error envelope -- NEW analytic content\<close>
 
 text \<open>
-  Paper'in "OR-clause asymmetry"si (CST doc sec:2.1): SOE clause DETERMINISTIK
-  (A4 altinda FPR sifir), timing clause OLASILIKSAL (FPR <= alpha). Buradan
-  paper'in prose'unda ACIKCA TURETILMEMIS bir sonuc cikar:
+  The paper's "OR-clause asymmetry" (CST doc sec:2.1): the SOE clause is
+  DETERMINISTIC (zero FPR under A4), the timing clause is PROBABILISTIC
+  (FPR <= alpha). From this follows a result NOT EXPLICITLY DERIVED in the
+  paper's prose:
 
-    Bir claim'in epistemik agirligi, HANGI TANIGIN atesledigine gore DEGISIR.
+    The epistemic weight of a claim DEPENDS ON WHICH WITNESS fired.
 
-  Blanket `residual` yerine tanik-basina zarf tanimliyoruz:
-    - Yapisal tanik: coincidence katkisi p_soe (A4 ile <= eps_SOE)
-    - Zamanlama tanigi: coincidence katkisi p_tim (A3 ile <= alpha)
-  Her ikisine de confounder katkisi p_conf (<= delta_A1 + alpha) eklenir.
+  Instead of the blanket `residual` we define a per-witness envelope:
+    - Structural witness: coincidence contribution p_soe (<= eps_SOE by A4)
+    - Timing witness:     coincidence contribution p_tim (<= alpha by A3)
+  Both additionally receive the confounder contribution p_conf (<= delta_A1 + alpha).
 \<close>
 
 definition wit_bound :: "ac2a_witness \<Rightarrow> envelope \<Rightarrow> intervention \<Rightarrow> real" where
@@ -719,7 +724,7 @@ lemma wit_bound_timing:
   using coincidence_timing_bound[OF assms(2)] confounder_bound[OF assms(1)]
   unfolding wit_bound_def by simp
 
-text \<open>Yapisal tanigin zarfi tam olarak App A'nin `residual`'idir.\<close>
+text \<open>The structural witness's envelope is exactly App A's `residual`.\<close>
 
 lemma wit_bound_structural_is_residual:
   assumes "A1 E \<iota>" "A4 E \<iota>"
@@ -727,8 +732,8 @@ lemma wit_bound_structural_is_residual:
   using wit_bound_structural[OF assms] unfolding residual_def by simp
 
 text \<open>
-  ANA SONUC: hangi tanik daha SIKI zarf verir? Tam karsilastirma kriteri
-  eps_SOE ile alpha arasindaki iliskidir -- baska hicbir parametreye bagli degil.
+  MAIN RESULT: which witness yields the TIGHTER envelope? The exact comparison
+  criterion is the relation between eps_SOE and alpha -- it depends on no other parameter.
 \<close>
 
 lemma structural_bound_tighter_iff:
@@ -736,17 +741,17 @@ lemma structural_bound_tighter_iff:
   by simp
 
 text \<open>
-  Okunusu (paper'in kalibrasyon rejimleriyle):
+  Reading (with the paper's calibration regimes):
     - WITHIN-BOOT (N=998): eps_SOE <= 0.37%, alpha_realized = 0.61%
-      => eps_SOE <= alpha  => YAPISAL tanik daha siki zarf verir.
+      => eps_SOE <= alpha  => the STRUCTURAL witness yields the tighter envelope.
     - CROSS-BOOT (N=34):   eps_SOE <= 10.4%, alpha_realized = 0.61%
-      => eps_SOE > alpha   => kriter TERSINE doner; zamanlama tanigi daha siki.
-  Yani "hangi tanik daha guclu" sorusunun cevabi kalibrasyon rejimine baglidir
-  ve bu, tek bir esitsizlikle tam olarak karakterize edilir.
+      => eps_SOE > alpha   => the criterion FLIPS; the timing witness is tighter.
+  So the answer to "which witness is stronger" depends on the calibration regime,
+  and this is characterized exactly by a single inequality.
 \<close>
 
 
-subsection \<open>6.4 Kosullu CST teoremi (Teorem 1, => yonu) -- ispatli\<close>
+subsection \<open>6.4 Conditional CST theorem (Theorem 1, => direction) -- proved\<close>
 
 theorem cst_conditional:
   assumes A1h: "A1 E \<iota>" and A2h: "A2 E \<iota>" and A3h: "A3 E \<iota>" and A4h: "A4 E \<iota>"
@@ -767,10 +772,10 @@ proof -
   then obtain i where i: "i < length Tc" "D Dstar To Tc i"
     by (auto simp: diverges_def)
   from align i(1) have iTo: "i < length To" by (rule aligned_index_safe)
-  \<comment> \<open>D'den somut bir AC2(a) tanigi cikar\<close>
+  \<comment> \<open>extract a concrete AC2(a) witness from D\<close>
   from i(2) obtain w where w: "witnesses w Dstar To Tc i"
     using D_iff_witness by blast
-  \<comment> \<open>tanigin kendi zarfi, iki tanik zarfinin maksimumuyla sinirli\<close>
+  \<comment> \<open>a witness's own envelope is bounded by the maximum of the two witness envelopes\<close>
   have wb: "wit_bound w E \<iota> \<le> max (eps_SOE + delta_A1 + alpha) (delta_A1 + 2 * alpha)"
   proof (cases w)
     case StructuralW
@@ -789,8 +794,8 @@ proof -
 qed
 
 text \<open>
-  Residual zarfinin her admissible claim'de rapor edilen [0, residual] araliginda
-  oldugunu ayrica gosteririz (App A: "reported per-claim").
+  We additionally show that the residual envelope lies in the interval
+  [0, residual] reported with every admissible claim (App A: "reported per-claim").
 \<close>
 
 corollary cst_residual_reported:
@@ -799,20 +804,20 @@ corollary cst_residual_reported:
   using mask_prob_nonneg[OF assms] w2_residual_bound[OF assms] by simp
 
 
-subsection \<open>6.45 Kapsam-TAMLIGI teoremi -- A2'nin gercek isi\<close>
+subsection \<open>6.45 SCOPE-COMPLETENESS theorem -- A2's real job\<close>
 
 text \<open>
-  CST'nin iki AYRI yeterlilik yonu vardir; bunlari karistirmamak onemli:
+  CST has two SEPARATE sufficiency directions; it is important not to conflate them:
 
-    SOUNDNESS      (cst_conditional):   yayinlanan claim'ler saglamdir.
-                                        Kullanir: A1, A3, A4.
-    SCOPE-COMPLETENESS (asagidaki):     S_in icindeki etkiler KACIRILMAZ.
-                                        Kullanir: A2.
+    SOUNDNESS      (cst_conditional):   published claims are sound.
+                                        Uses: A1, A3, A4.
+    SCOPE-COMPLETENESS (below):         effects inside S_in are NOT MISSED.
+                                        Uses: A2.
 
-  A2'nin cst_conditional'in hipotez listesinde gorunup ispatta cagrilmamasi bu
-  yuzdendir -- A2 SOUNDNESS'a degil, TAMLIGA katki verir. Bunu ayri bir teorem
-  olarak yazmak, A2'nin "olu hipotez" gorunmesini ortadan kaldirir ve rolunu
-  kesinlestirir.
+  This is why A2 appears in the hypothesis list of cst_conditional yet is never
+  invoked in its proof -- A2 contributes to COMPLETENESS, not to SOUNDNESS.
+  Stating it as a separate theorem removes the appearance of A2 being a "dead
+  hypothesis" and pins down its role.
 \<close>
 
 theorem cst_scope_complete:
@@ -832,9 +837,9 @@ next
 qed
 
 text \<open>
-  Kontrapozitif okuma (scope-honesty): hic divergence yoksa, S_in icinde
-  hicbir nedensel etki de YOKTUR. Yani CST'nin sessizligi, S_in uzerinde
-  bilgilendiricidir -- S_out uzerinde ise HICBIR SEY soylemez.
+  Contrapositive reading (scope-honesty): if there is no divergence at all, there
+  is NO causal effect inside S_in either. So CST's silence is informative over
+  S_in -- and says NOTHING over S_out.
 \<close>
 
 corollary silence_informative_over_s_in:
@@ -849,20 +854,20 @@ proof
 qed
 
 
-subsection \<open>6.5 Sirali kompozisyon (Proposition 1) -- ispatli\<close>
+subsection \<open>6.5 Sequential composition (Proposition 1) -- proved\<close>
 
 text \<open>
-  App A Proposition 1: n-adimli zincir admissible <=> her atomik adim admissible;
-  delta_A1 union-bound ile birikir (O(n), bozunma yok). Zinciri, adim-basi
-  admissibility booleanlarinin listesi olarak modelliyoruz.
+  App A Proposition 1: an n-step chain is admissible <=> every atomic step is
+  admissible; delta_A1 accumulates by union bound (O(n), no degradation). We model
+  the chain as the list of per-step admissibility booleans.
 \<close>
 
-\<comment> \<open>Zincir admissible <=> tum atomik adimlar admissible (App A induction, biconditional)\<close>
+\<comment> \<open>Chain admissible <=> all atomic steps admissible (App A induction, biconditional)\<close>
 lemma chain_iff_all_atomic:
   "list_all (\<lambda>b. b) steps \<longleftrightarrow> (\<forall>k < length steps. steps ! k)"
   by (simp add: list_all_length)
 
-\<comment> \<open>n adim sonra birikmis delta_A1 zarfi\<close>
+\<comment> \<open>accumulated delta_A1 envelope after n steps\<close>
 primrec accum_delta :: "nat \<Rightarrow> real" where
   "accum_delta 0 = 0"
 | "accum_delta (Suc n) = accum_delta n + delta_A1"
@@ -870,7 +875,7 @@ primrec accum_delta :: "nat \<Rightarrow> real" where
 lemma accum_delta_eq: "accum_delta n = of_nat n * delta_A1"
   by (induct n) (simp_all add: algebra_simps)
 
-\<comment> \<open>Union bound: zarf adim sayisiyla lineer buyur, monoton -- bozunma yok\<close>
+\<comment> \<open>Union bound: the envelope grows linearly in the number of steps, monotone -- no degradation\<close>
 lemma accum_delta_mono: "accum_delta n \<le> accum_delta (Suc n)"
   using prob_nonneg(1) by simp
 
@@ -878,19 +883,21 @@ lemma accum_delta_linear_bound: "accum_delta n \<le> of_nat n * delta_A1"
   by (simp add: accum_delta_eq)
 
 
-subsection \<open>6.55 Paralel sweep: TANIK-DUYARLI ensemble zarfi (b x Prop 1)\<close>
+subsection \<open>6.55 Parallel sweep: WITNESS-SENSITIVE ensemble envelope (b x Prop 1)\<close>
 
 text \<open>
-  DIKKAT -- eksen ayrimi. accum_delta (yukarida) SIRALI kompozisyonun delta_A1
-  union-bound birikimidir (Prop 1). Bu alt-bolum ise PARALEL sweep icindir:
-  App A "Scope clarification: sequential vs parallel ensembles" -- sweep = 33
-  BAGIMSIZ atomik claim, her biri Korig'e karsi ayri dogrulanir, delta_A1
-  per-claim sinirli, i uzerinde union-bound birikimi YOK, kapsam O(n).
+  CAUTION -- axis distinction. accum_delta (above) is the delta_A1 union-bound
+  accumulation of SEQUENTIAL composition (Prop 1). This subsection is for the
+  PARALLEL sweep instead: App A "Scope clarification: sequential vs parallel
+  ensembles" -- sweep = 33 INDEPENDENT atomic claims, each verified separately
+  against Korig, delta_A1 bounded per-claim, NO union-bound accumulation over i,
+  scope O(n).
 
-  (b) adimi gosterdi ki her claim'in zarfi ATESLEYEN TANIGA baglidir. Bir
-  sweep'te farkli claim'ler farkli taniklarla ateslenebilir; dolayisiyla
-  ensemble-seviyesi (toplam) zarf TANIK-DUYARLI olmalidir ve naif "n * blanket"
-  sinirindan DAHA SIKIDIR. Iste (b)'nin sweep'e tasinmasi budur.
+  Step (b) showed that each claim's envelope depends on the WITNESS THAT FIRED.
+  In a sweep, different claims may fire on different witnesses; hence the
+  ensemble-level (total) envelope must be WITNESS-SENSITIVE and is TIGHTER than
+  the naive "n * blanket" bound. That is exactly what carrying (b) over to the
+  sweep amounts to.
 \<close>
 
 definition wit_ub :: "ac2a_witness \<Rightarrow> real" where
@@ -934,7 +941,7 @@ next
   case (Cons w ws) thus ?case by (cases w) simp_all
 qed
 
-text \<open>Kapali form: k yapisal + (n-k) zamanlama tanigi.\<close>
+text \<open>Closed form: k structural + (n-k) timing witnesses.\<close>
 
 lemma sweep_ub_closed_form:
   "sweep_ub ws = of_nat (countS ws) * (eps_SOE + delta_A1 + alpha)
@@ -946,7 +953,7 @@ next
     by (cases w) (simp_all add: sweep_ub_def wit_ub_def algebra_simps)
 qed
 
-text \<open>ANA SONUC: tanik-duyarli zarf, naif blanket biriktirmeden DAHA SIKI.\<close>
+text \<open>MAIN RESULT: the witness-sensitive envelope is TIGHTER than naive blanket accumulation.\<close>
 
 lemma sweep_ub_tighter:
   "sweep_ub ws \<le> of_nat (length ws) * blanket"
@@ -962,10 +969,10 @@ lemma sweep_ub_nonneg: "0 \<le> sweep_ub ws"
   unfolding sweep_ub_def by (intro sum_list_nonneg) (auto simp: wit_ub_nonneg)
 
 text \<open>
-  GERCEK katki koprusu: her adimin olculen zarfi (wit_bound) kendi tanik ust
-  sinirindan (wit_ub) kucuktur; dolayisiyla ensemble'in olculen toplam zarfi
-  tanik-duyarli sweep_ub ile sinirlidir. Uc kademeli: olculen <= tanik-sayimli
-  <= naif blanket.
+  The REAL contribution bridge: each step's measured envelope (wit_bound) is below
+  its own witness upper bound (wit_ub); hence the ensemble's measured total
+  envelope is bounded by the witness-sensitive sweep_ub. Three tiers: measured <=
+  witness-counted <= naive blanket.
 \<close>
 
 lemma wit_bound_le_ub:
@@ -990,7 +997,7 @@ lemma sweep_actual_le_ub:
   unfolding sweep_actual_def sweep_ub_def
   by (intro sum_list_mono) (rule wit_bound_le_ub[OF assms])
 
-text \<open>Uc kademeli sinir tek ifadede.\<close>
+text \<open>The three-tier bound in a single statement.\<close>
 
 theorem sweep_three_level_bound:
   assumes "A1 E \<iota>" "A3 E \<iota>" "A4 E \<iota>"
@@ -999,9 +1006,10 @@ theorem sweep_three_level_bound:
   using sweep_actual_le_ub[OF assms] sweep_ub_tighter by blast
 
 text \<open>
-  SESSIZ INPUT'LAR BEDAVA: ensemble zarfi yalnizca ADMISSIBLE claim sayisiyla
-  olceklenir, taranan TOPLAM input sayisiyla DEGIL. Bu, scope-honesty'nin (d)
-  ensemble seviyesindeki sonucudur -- D=false input'lar (None) zarfa hic girmez.
+  SILENT INPUTS ARE FREE: the ensemble envelope scales only with the number of
+  ADMISSIBLE claims, NOT with the TOTAL number of swept inputs. This is the
+  ensemble-level consequence of scope-honesty (d) -- D=false inputs (None) never
+  enter the envelope.
 \<close>
 
 lemma ensemble_envelope_bound:
@@ -1015,13 +1023,13 @@ lemma silent_inputs_free:
 end  \<comment> \<open>locale cst_assumptions\<close>
 
 
-subsection \<open>6.6 Locale tutarliligi: bir yorumlama (interpretation)\<close>
+subsection \<open>6.6 Locale consistency: an interpretation\<close>
 
 text \<open>
-  Locale'in TUTARLI (celiskisiz) oldugunu, assumption'lari saglayan somut bir
-  ornek yorumlama ile gosteririz: tum katkilar 0, tum sinirlar orta degerde.
-  Bu, "vacuously true" olmadigini ve teoremlerin gercek bir modelde gecerli
-  oldugunu dogrular.
+  We show that the locale is CONSISTENT (non-contradictory) by a concrete
+  interpretation satisfying its assumptions: all contributions 0, all bounds at
+  mid-range values. This confirms that it is not "vacuously true" and that the
+  theorems hold in an actual model.
 \<close>
 
 interpretation cst_trivial:
@@ -1032,18 +1040,18 @@ interpretation cst_trivial:
     "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True"         \<comment> \<open>A3, A4\<close>
     "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0"     \<comment> \<open>p_soe, p_tim, p_conf\<close>
     "\<lambda>E. {}"                         \<comment> \<open>eff_vars\<close>
-    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: etkiler YAPISAL olarak yansir (vacuous DEGIL)\<close>
+    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: effects are reflected STRUCTURALLY (NOT vacuous)\<close>
   by unfold_locales (auto simp: D_def)
 
 
-subsection \<open>6.7 Paper'in GERCEK kalibrasyon rejimleri -- sayisal instantiation\<close>
+subsection \<open>6.7 The paper's ACTUAL calibration regimes -- numerical instantiation\<close>
 
 text \<open>
-  Yukaridaki tanik-karsilastirma kriterini (structural_bound_tighter_iff)
-  paper'in ILAN ETTIGI kalibrasyon degerleriyle instantiate ediyoruz.
-  Boylece mekanizasyon soyut kalmiyor, dogrudan extp.tex'in rakamlarina baglaniyor.
+  We instantiate the witness-comparison criterion above (structural_bound_tighter_iff)
+  with the calibration values the paper REPORTS.
+  Thus the mechanization does not stay abstract but ties directly to the numbers in extp.tex.
 
-  Kaynak: extp.tex sec:capsep / sec:soe / sec:mi
+  Source: extp.tex sec:capsep / sec:soe / sec:mi
     Dstar        = 9077 cycle   (1.645 * 5518; L1-pchase / S1, boot_log12)
     within-boot  : eps_SOE, delta_A1 <= 0.37%  (N=998),  alpha = 0.61% (boot_log8)
     cross-boot   : eps_SOE, delta_A1 <= 10.4%  (N=34),   alpha = 0.61%
@@ -1056,7 +1064,7 @@ interpretation cst_withinboot:
     "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True"
     "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0"
     "\<lambda>E. {}"
-    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: etkiler YAPISAL olarak yansir (vacuous DEGIL)\<close>
+    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: effects are reflected STRUCTURALLY (NOT vacuous)\<close>
   by unfold_locales (auto simp: D_def)
 
 interpretation cst_crossboot:
@@ -1066,12 +1074,12 @@ interpretation cst_crossboot:
     "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True" "\<lambda>E \<iota>. True"
     "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0" "\<lambda>E \<iota>. 0"
     "\<lambda>E. {}"
-    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: etkiler YAPISAL olarak yansir (vacuous DEGIL)\<close>
+    "\<lambda>E \<iota> To Tc i. soe_clause To Tc i"   \<comment> \<open>effect_at: effects are reflected STRUCTURALLY (NOT vacuous)\<close>
   by unfold_locales (auto simp: D_def)
 
 text \<open>
-  WITHIN-BOOT: eps_SOE (0.37%) <= alpha (0.61%)  =>  YAPISAL tanik daha siki.
-  Zarflar: yapisal 1.35%  vs  zamanlama 1.59%.
+  WITHIN-BOOT: eps_SOE (0.37%) <= alpha (0.61%)  =>  the STRUCTURAL witness is tighter.
+  Envelopes: structural 1.35%  vs  timing 1.59%.
 \<close>
 
 lemma withinboot_criterion: "(37/10000 :: real) \<le> 61/10000"
@@ -1082,8 +1090,8 @@ lemma withinboot_structural_tighter:
   by simp
 
 text \<open>
-  CROSS-BOOT: eps_SOE (10.4%) > alpha (0.61%)  =>  kriter TERSINE doner,
-  ZAMANLAMA tanigi daha siki. Zarflar: yapisal 21.41%  vs  zamanlama 11.62%.
+  CROSS-BOOT: eps_SOE (10.4%) > alpha (0.61%)  =>  the criterion FLIPS,
+  the TIMING witness is tighter. Envelopes: structural 21.41%  vs  timing 11.62%.
 \<close>
 
 lemma crossboot_criterion: "\<not> ((1040/10000 :: real) \<le> 61/10000)"
@@ -1094,23 +1102,23 @@ lemma crossboot_timing_tighter:
   by simp
 
 text \<open>
-  Bu iki rejimin ZIT sonuc vermesi, tanik ayrimini kozmetik olmaktan cikarir:
-  bir CST claim'inin epistemik agirligi hem HANGI TANIGIN atesledigine hem de
-  HANGI KALIBRASYON REJIMINDE calisildigina baglidir. Downstream tuketiciler
-  (mitigation verification, counterfactual fuzzing) blanket `residual` yerine
-  tanik-basina zarfi kullanarak daha siki -- ve dogru rejimde daha DURUST --
-  bir sinir raporlayabilir.
+  That these two regimes give OPPOSITE outcomes takes the witness distinction out
+  of the cosmetic: the epistemic weight of a CST claim depends both on WHICH
+  WITNESS fired and on WHICH CALIBRATION REGIME one operates in. Downstream
+  consumers (mitigation verification, counterfactual fuzzing) can report a
+  tighter -- and, in the right regime, more HONEST -- bound by using the
+  per-witness envelope instead of the blanket `residual`.
 \<close>
 
 
-subsection \<open>6.75 Karisik sweep: tanik-duyarli zarf KESIN daha siki (sayisal)\<close>
+subsection \<open>6.75 Mixed sweep: witness-sensitive envelope STRICTLY tighter (numerical)\<close>
 
 text \<open>
-  (f)'in somut getirisi: within-boot rejiminde, biri yapisal biri zamanlama
-  tanigiyla ateslenen 2-claim'lik bir sweep icin tanik-duyarli toplam zarf
-  2.94%, naif "n * blanket" ise 3.18% -- yani KESIN olarak daha siki (esit degil).
-  Bir S1/T1 sweep'inin uctan uca kapsam haritasinda (paper Fig. sweep) bu fark,
-  claim sayisiyla dogru orantili olarak buyur.
+  The concrete payoff of (f): in the within-boot regime, for a 2-claim sweep with
+  one claim fired by the structural and one by the timing witness, the
+  witness-sensitive total envelope is 2.94%, whereas the naive "n * blanket" gives
+  3.18% -- i.e. STRICTLY tighter (not equal). In the end-to-end coverage map of an
+  S1/T1 sweep (paper Fig. sweep) this gap grows in proportion to the number of claims.
 \<close>
 
 lemma withinboot_sweep_strictly_tighter:
@@ -1119,22 +1127,22 @@ lemma withinboot_sweep_strictly_tighter:
   by (simp add: cst_withinboot.sweep_ub_def cst_withinboot.wit_ub_def
                 cst_withinboot.blanket_def)
 
-text \<open>Kapali-form dogrulamasi: sweep_ub [S,T] = 294/10000.\<close>
+text \<open>Closed-form check: sweep_ub [S,T] = 294/10000.\<close>
 
 lemma withinboot_sweep_value:
   "cst_withinboot.sweep_ub [StructuralW, TimingW] = 294/10000"
   by (simp add: cst_withinboot.sweep_ub_def cst_withinboot.wit_ub_def)
 
-text \<open>Naif blanket birikimi = 318/10000; fark = 24/10000 (claim basina ~0.12%).\<close>
+text \<open>Naive blanket accumulation = 318/10000; difference = 24/10000 (~0.12% per claim).\<close>
 
 lemma withinboot_blanket_value:
   "of_nat (length [StructuralW, TimingW]) * cst_withinboot.blanket = 318/10000"
   by (simp add: cst_withinboot.blanket_def)
 
 text \<open>
-  Homojen sweep'te esitlik: tum claim'ler ayni (en kotu) tanikla ateslenirse
-  tanik-duyarli zarf naif blanket'e ESITTIR -- yani siklik kazanci tam olarak
-  tanik KARISIMINDAN gelir, baska bir yerden degil.
+  Equality in a homogeneous sweep: if all claims fire on the same (worst) witness,
+  the witness-sensitive envelope EQUALS the naive blanket -- i.e. the tightness
+  gain comes exactly from the witness MIX, and from nowhere else.
 \<close>
 
 lemma withinboot_homogeneous_equality:
@@ -1144,16 +1152,16 @@ lemma withinboot_homogeneous_equality:
                 cst_withinboot.blanket_def)
 
 
-subsection \<open>6.8 GERCEK sweep verisine baglama (adim h)\<close>
+subsection \<open>6.8 Tying to the REAL sweep data (step h)\<close>
 
 text \<open>
-  extp.tex sec:eval-demo-sweep gercek sonucu:
-    - 33 input taraniyor (0xDEAD + 16 low-byte + 14 wide + 2 distractor).
-    - Divergence sayisi 1/33: yalnizca 0xDEAD ateslendi (SOE clause; RIP 0x10016,
-      RAX 0x80000008). Diger 32'si default-path, SOE clause SESSIZ => D=false
-      => ADMISSIBLE CLAIM YOK.
-    - Tum divergence SOE-clause; TIMING tanigi hic yok.
-  Bunu modele birebir kodluyoruz.
+  The actual result of extp.tex sec:eval-demo-sweep:
+    - 33 inputs swept (0xDEAD + 16 low-byte + 14 wide + 2 distractor).
+    - Divergence count 1/33: only 0xDEAD fired (SOE clause; RIP 0x10016,
+      RAX 0x80000008). The other 32 are default-path, SOE clause SILENT => D=false
+      => NO ADMISSIBLE CLAIM.
+    - All divergence is SOE-clause; the TIMING witness never fires.
+  We encode this into the model verbatim.
 \<close>
 
 definition dead_sweep :: "ac2a_witness option list" where
@@ -1169,8 +1177,8 @@ lemma dead_sweep_emitted_count: "length (emitted_of dead_sweep) = 1"
   by (simp add: dead_sweep_emitted)
 
 text \<open>
-  Ensemble zarfi, GERCEK kalibrasyonla. WITHIN-BOOT: yalnizca 1 yapisal claim
-  => zarf = eps_SOE + delta_A1 + alpha = 1.35%.
+  The ensemble envelope, with the REAL calibration. WITHIN-BOOT: only 1 structural claim
+  => envelope = eps_SOE + delta_A1 + alpha = 1.35%.
 \<close>
 
 lemma dead_sweep_envelope_withinboot:
@@ -1187,15 +1195,15 @@ lemma dead_sweep_envelope_crossboot:
   apply simp
   done
 
-text \<open>Naif taranan-input siniri = 33 * 1.59% = 52.47%.\<close>
+text \<open>Naive swept-input bound = 33 * 1.59% = 52.47%.\<close>
 
 lemma dead_sweep_naive_swept_value:
   "of_nat (length dead_sweep) * cst_withinboot.blanket = 5247/10000"
   by (simp add: dead_sweep_total cst_withinboot.blanket_def)
 
 text \<open>
-  Somut silent-leak: ex_silent'teki +400-cycle fark, gercek Delta*=9077 (within-boot)
-  altinda sub-esik => her iki clause sessiz => silent_leak. (adim i, somut baglanti)
+  Concrete silent leak: the +400-cycle difference in ex_silent is sub-threshold under
+  the real Delta*=9077 (within-boot) => both clauses silent => silent_leak. (step i, concrete link)
 \<close>
 
 lemma ex_silent_is_silent_leak_withinboot:
@@ -1204,16 +1212,16 @@ lemma ex_silent_is_silent_leak_withinboot:
                 ex_orig_def ex_silent_def ev_def)
 
 text \<open>
-  Dolayisiyla (silent_leak_only_out_of_scope ile): boyle bir sub-Delta* etki, A2
-  altinda ancak S_out'ta yasayabilir -- MI silent-leak sinifinin CMD-future-class'a
-  ertelenmesinin makine-kontrollu cekirdegi.
+  Hence (with silent_leak_only_out_of_scope): such a sub-Delta* effect can, under A2,
+  live only in S_out -- the machine-checked core of deferring MI's silent-leak class
+  to the CMD future class.
 \<close>
 
 text \<open>
-  ASIL SONUC (scope-honesty x ensemble): 33-input'luk sweep'in zarfi, taranan
-  input sayisiyla DEGIL, admissible claim sayisiyla (1) olceklenir. Naif "her
-  taranan input bir yuk tasir" gorusu 33 * blanket = 52.47% verirdi; gercek zarf
-  1.35% -- ~39 kat daha siki, cunku 32 sessiz input BEDAVA.
+  MAIN RESULT (scope-honesty x ensemble): the envelope of the 33-input sweep scales
+  with the number of admissible claims (1), NOT with the number of swept inputs. The
+  naive view "every swept input carries a load" would give 33 * blanket = 52.47%; the
+  actual envelope is 1.35% -- ~39x tighter, because the 32 silent inputs are FREE.
 \<close>
 
 lemma dead_sweep_envelope_vs_naive_swept:
@@ -1222,30 +1230,30 @@ lemma dead_sweep_envelope_vs_naive_swept:
   using dead_sweep_envelope_withinboot dead_sweep_naive_swept_value by simp
 
 
-section \<open>7. FAZ 3 arayuz iskeleti (lifting) -- YUKUMLULUK IZOLE, ACIK KAPATILMAZ\<close>
+section \<open>7. PHASE 3 interface skeleton (lifting) -- OBLIGATION ISOLATED, GAP NOT CLOSED\<close>
 
 text \<open>
-  >>> DURUSTLUK NOTU (kritik). Bu bolum lifting acigini KAPATMAZ. Gercek kapatma
-  L4.verified'in devasa Isabelle ispatina baglanmayi ve VMM/VT-x katmanini
-  formalize etmeyi gerektirir (cok-yillik; ve yalnizca K_verified'i kapsar).
-  Burada yapilan: (1) lifting'in TIPLI ARAYUZUNU tanimlamak; (2) seL4'un
-  saglamasi gereken TEK teoremi -- K_verified operasyonlarinin external
-  atomicity'si -- acik, ISIMLI bir locale ASSUMPTION olarak IZOLE etmek;
-  (3) bu assumption VERILDIGINDE A1'in K_verified icin delta_A1=0 (kosulsuz
-  modularity) ile yapisal olarak ciktigini ispatlamak; (4) K_extended'in bu
-  assumption'in guard'i disinda kaldigini, dolayisiyla ampirik kaldigini
-  gostermek. Assumption ISPATLANMAZ -- multi-year delik tam olarak orasidir;
-  biz onu kapatmiyor, TEK ve isaretli bir yukumluluge indirgeyip sinirstiriyoruz.
+  >>> HONESTY NOTE (critical). This section does NOT close the lifting gap. Actually
+  closing it requires hooking into L4.verified's enormous Isabelle proof and
+  formalizing the VMM/VT-x layer (multi-year; and covering K_verified only).
+  What is done here: (1) define the TYPED INTERFACE of the lifting; (2) ISOLATE the
+  SINGLE theorem seL4 must supply -- external atomicity of K_verified
+  operations -- as an explicit, NAMED locale ASSUMPTION; (3) prove that, GIVEN
+  this assumption, A1 follows structurally for K_verified with delta_A1=0
+  (unconditional modularity); (4) show that K_extended falls outside this
+  assumption's guard and therefore remains empirical. The assumption is NOT
+  PROVED -- the multi-year hole is exactly there; we do not close it, we reduce it
+  to a SINGLE, marked obligation and fence it off.
 \<close>
 
-typedecl sel4_astate   \<comment> \<open>seL4 soyut makine durumu (opak; gercek modeli L4.verified'de)\<close>
+typedecl sel4_astate   \<comment> \<open>seL4 abstract machine state (opaque; the real model lives in L4.verified)\<close>
 
 consts
-  lift :: "sel4_astate \<Rightarrow> observable"   \<comment> \<open>soyut durum -> EXTp VMCS-observable yuzeyi\<close>
+  lift :: "sel4_astate \<Rightarrow> observable"   \<comment> \<open>abstract state -> EXTp VMCS-observable surface\<close>
 
 datatype kop =
-    Create | Copy | Revoke | Destroy        \<comment> \<open>K_verified (L4.verified kapsaminda)\<close>
-  | MapEPT | Unmap | ReadVMCS | WriteVMCS    \<comment> \<open>K_extended (verified kapsam DISI)\<close>
+    Create | Copy | Revoke | Destroy        \<comment> \<open>K_verified (within L4.verified scope)\<close>
+  | MapEPT | Unmap | ReadVMCS | WriteVMCS    \<comment> \<open>K_extended (OUTSIDE verified scope)\<close>
 
 definition k_verified :: "kop set" where
   "k_verified = {Create, Copy, Revoke, Destroy}"
@@ -1260,10 +1268,10 @@ lemma k_partition_complete: "k_verified \<union> k_extended = UNIV"
   by (auto simp: k_verified_def k_extended_def) (case_tac x, auto)
 
 text \<open>
-  seL4 arayuz locale'i. `op_authority op` = op'un dokunabildigi degisken kumesi;
-  `fwk_vars` = framework-internal (K_fwk) degiskenler. Tek assumption:
-  K_verified op'lari framework-internal duruma DOKUNMAZ (external atomicity'nin
-  operasyonel karsiligi). Bu, L4.verified'in SAGLADIGI seydir; BURADA ISPATLANMAZ.
+  seL4 interface locale. `op_authority op` = the set of variables that op can touch;
+  `fwk_vars` = the framework-internal (K_fwk) variables. Single assumption:
+  K_verified ops DO NOT touch framework-internal state (the operational counterpart
+  of external atomicity). This is what L4.verified PROVIDES; it is NOT PROVED HERE.
 \<close>
 
 locale sel4_lifting =
@@ -1271,12 +1279,12 @@ locale sel4_lifting =
     and fwk_vars      :: "nat set"
   assumes verified_no_fwk_touch:
     "\<And>op. op \<in> k_verified \<Longrightarrow> op_authority op \<inter> fwk_vars = {}"
-    \<comment> \<open>^ L4.verified external-atomicity yukumlulugu; ACIK, tek delik.\<close>
+    \<comment> \<open>^ L4.verified external-atomicity obligation; OPEN, the single hole.\<close>
 begin
 
 text \<open>
-  (g.1) Assumption verildiginde, A1'in K_verified icin KOSULSUZ hali (delta=0):
-  intervention K_verified op'u ise, framework-internal duruma etki EDEMEZ.
+  (g.1) Given the assumption, the UNCONDITIONAL form of A1 for K_verified (delta=0):
+  if the intervention is a K_verified op, it CANNOT affect framework-internal state.
 \<close>
 
 theorem A1_unconditional_for_verified:
@@ -1290,11 +1298,11 @@ corollary verified_no_confounder:
   using A1_unconditional_for_verified[OF assms(1)] assms(2) by blast
 
 text \<open>
-  (g.2) K_extended, assumption'in guard'i DISINDADIR: bu locale onlar hakkinda
-  HICBIR sey soylemez. Boyle bir op'un framework'e dokundugu bir dunya
-  TUTARLIDIR (asagidaki yorumlama) -- yani K_extended icin delta=0 CIKMAZ,
-  ampirik kalir. Bu, paper'in K_verified (kosulsuz) / K_extended (ampirik)
-  ayrimin makine-kontrollu karsiligidir.
+  (g.2) K_extended lies OUTSIDE the assumption's guard: this locale says NOTHING
+  about it. A world in which such an op touches the framework is CONSISTENT
+  (interpretation below) -- i.e. delta=0 does NOT follow for K_extended; it stays
+  empirical. This is the machine-checked counterpart of the paper's K_verified
+  (unconditional) / K_extended (empirical) distinction.
 \<close>
 
 lemma verified_guard_excludes_extended:
@@ -1304,9 +1312,10 @@ lemma verified_guard_excludes_extended:
 end  \<comment> \<open>locale sel4_lifting\<close>
 
 text \<open>
-  (g.3) TUTARLILIK + K_extended'in kapsanmadiginin KANITI: oyle bir yorumlama
-  var ki (a) assumption saglanir (locale bos degil), (b) bir K_extended op'u
-  framework'e DOKUNUR. Yani arayuz tutarli AMA K_extended'i kurtarmiyor.
+  (g.3) CONSISTENCY + PROOF that K_extended is not covered: there is an interpretation
+  such that (a) the assumption holds (the locale is non-empty), (b) some K_extended
+  op DOES touch the framework. So the interface is consistent BUT does not rescue
+  K_extended.
 \<close>
 
 definition demo_auth :: "kop \<Rightarrow> nat set" where
@@ -1317,49 +1326,49 @@ interpretation sel4_demo:
   by unfold_locales (simp add: demo_auth_def)
 
 lemma extended_can_touch_fwk:
-  "demo_auth MapEPT \<inter> {0} \<noteq> {}"    \<comment> \<open>K_extended framework'e dokunur\<close>
+  "demo_auth MapEPT \<inter> {0} \<noteq> {}"    \<comment> \<open>K_extended touches the framework\<close>
   by (simp add: demo_auth_def k_verified_def k_extended_def)
 
 lemma verified_cannot_touch_fwk:
-  "demo_auth Create \<inter> {0} = {}"      \<comment> \<open>K_verified dokunmaz\<close>
+  "demo_auth Create \<inter> {0} = {}"      \<comment> \<open>K_verified does not\<close>
   by (simp add: demo_auth_def k_verified_def)
 
 text \<open>
-  >>> OZET. Yukaridaki teoremler lifting'i KAPATMAZ. Kapatma =
-  `verified_no_fwk_touch` assumption'ini L4.verified'in gercek atomicity
-  teoreminden TURETMEK (ve `lift`/`sel4_astate`'i gercek seL4 makine modeline
-  baglamak). O is bu dosyada YOK ve cok-yillik. Burada yalnizca: yukumluluk
-  tek ve isimli hale getirildi, ondan cikanlar (K_verified delta=0) ispatlandi,
-  ve K_extended'in kapsam disi kaldigi gosterildi. Kosullu CST teoremi (Faz 2)
-  bu bolumun HICBIRINE ihtiyac duymaz; bu bolum yalnizca A1'in bir alt-kumesini
-  ampirik olmaktan cikarmanin fiyat etiketini tipli olarak sergiler.
+  >>> SUMMARY. The theorems above do NOT close the lifting. Closing it =
+  DERIVING the `verified_no_fwk_touch` assumption from L4.verified's actual atomicity
+  theorem (and connecting `lift`/`sel4_astate` to the real seL4 machine model). That
+  work is NOT in this file and is multi-year. Here only: the obligation has been made
+  single and named, its consequences (K_verified delta=0) have been proved, and
+  K_extended has been shown to remain out of scope. The conditional CST theorem (Phase 2)
+  needs NONE of this section; this section merely exhibits, in typed form, the price
+  tag of moving a subset of A1 out of the empirical realm.
 \<close>
 
-section \<open>8. Iki "prose" kosesinin kapatilmasi: W-formunda composition + trace-zincirli Prop 1\<close>
+section \<open>8. Closing two "prose" corners: composition in W-form + trace-threaded Prop 1\<close>
 
 text \<open>
-  Statement-fidelity denetimi (2026-09-01) kagit ispatinda iki noktayi "prose" birakmisti:
-    (F2) App A item (ii): Pearl composition'in delta_A1-relaxed hali paper'da K_fwk
-         uzerindeki W degiskenleri ve |W_cf - W_orig| perturbasyonu ile ifade ediliyor;
-         mekanizasyon bunu yalnizca confounder bound (composition_relaxed) olarak
-         MODELLEMISTI.
-    (F5) Prop 1 sirali kompozisyon: paper'da T_cf^(k) bir sonraki adimin BASELINE'i;
-         mekanizasyon yalnizca n*delta_A1 aritmetigini tasiyordu.
-  Bu bolum ikisini de paper'daki ifadeye birebir karsilik gelecek sekilde kapatir.
-  Antecedent disiplini korunur: olasiliklar (p_pert) soyut reel parametre olarak girer.
+  The statement-fidelity audit (2026-09-01) had left two points of the paper proof as "prose":
+    (F2) App A item (ii): the delta_A1-relaxed form of Pearl composition is stated in the
+         paper via the W variables over K_fwk and the perturbation |W_cf - W_orig|;
+         the mechanization had MODELLED this only as a confounder bound
+         (composition_relaxed).
+    (F5) Prop 1 sequential composition: in the paper T_cf^(k) is the BASELINE of the next
+         step; the mechanization carried only the n*delta_A1 arithmetic.
+  This section closes both so that they correspond exactly to the paper's statements.
+  The antecedent discipline is preserved: probabilities (p_pert) enter as abstract real parameters.
 \<close>
 
-subsection \<open>8.1 Holding W: yapisal kisim (locale disi)\<close>
+subsection \<open>8.1 Holding W: the structural part (outside the locale)\<close>
 
 text \<open>
-  hold W \<sigma>o \<sigma>: valuation \<sigma>'da W kumesindeki degiskenleri T_orig'deki degerlerine
-  (\<sigma>o) sabitler -- Pearl/HP'nin "W = w_orig tutulurken" islemi.
+  hold W \<sigma>o \<sigma>: in valuation \<sigma>, pins the variables in the set W to their values in T_orig
+  (\<sigma>o) -- Pearl/HP's "while holding W = w_orig" operation.
 \<close>
 
 definition hold :: "nat set \<Rightarrow> valuation \<Rightarrow> valuation \<Rightarrow> valuation" where
   "hold W \<sigma>o \<sigma> = (\<lambda>v. if v \<in> W then \<sigma>o v else \<sigma> v)"
 
-text \<open>Her W-degiskeninde |W_cf - W_orig| \<le> Dstar (App A: "perturbation bounded by Dstar on each W").\<close>
+text \<open>On every W-variable |W_cf - W_orig| \<le> Dstar (App A: "perturbation bounded by Dstar on each W").\<close>
 
 definition pert_bounded :: "nat \<Rightarrow> nat set \<Rightarrow> valuation \<Rightarrow> valuation \<Rightarrow> bool" where
   "pert_bounded Dstar W \<sigma>o \<sigma>c \<longleftrightarrow> (\<forall>w\<in>W. \<bar>int (\<sigma>c w) - int (\<sigma>o w)\<bar> \<le> int Dstar)"
@@ -1368,10 +1377,10 @@ lemma hold_in:  "v \<in> W \<Longrightarrow> hold W \<sigma>o \<sigma> v = \<sig
 lemma hold_out: "v \<notin> W \<Longrightarrow> hold W \<sigma>o \<sigma> v = \<sigma> v" by (simp add: hold_def)
 
 text \<open>
-  Pearl composition, KATI form: W zaten dogal degerinde ise (W_x = w), W'yi tutmak
-  sonucu degistirmez -- do(x') tek basina ile do(x') + hold W AYNI valuation'i verir.
-  Tek yapisal on-kosul: mudahale degiskeni W'nin DISINDA (CapSep: K_int \<inter> K_fwk = {}).
-  Aksi halde hold mudahaleyi geri alirdi.
+  Pearl composition, STRICT form: if W is already at its natural value (W_x = w), holding W
+  does not change the outcome -- do(x') alone and do(x') + hold W yield the SAME valuation.
+  The only structural precondition: the intervention variable lies OUTSIDE W (CapSep: K_int \<inter> K_fwk = {}).
+  Otherwise hold would undo the intervention.
 \<close>
 
 lemma composition_strict_structural:
@@ -1389,7 +1398,7 @@ proof
   qed
 qed
 
-text \<open>Effectiveness W tutulurken de korunur: hold, do(x')'i geri almaz.\<close>
+text \<open>Effectiveness is preserved while holding W too: hold does not undo do(x').\<close>
 
 lemma hold_preserves_effectiveness:
   assumes "var \<iota> \<notin> W"
@@ -1397,9 +1406,9 @@ lemma hold_preserves_effectiveness:
   using assms by (simp add: hold_def apply_iv_def)
 
 text \<open>
-  delta_A1-RELAXED form, yapisal kisim: W tam dogal degerinde OLMASA bile, W tutulan ve
-  tutulmayan iki do(x') sonucu (a) W disinda (X dahil) ozdes, (b) W icinde her
-  koordinatta en fazla Dstar farkli -- pert_bounded altinda.
+  delta_A1-RELAXED form, structural part: even if W is NOT exactly at its natural value, the two
+  do(x') outcomes with and without holding W are (a) identical outside W (including X),
+  (b) different by at most Dstar on every coordinate inside W -- under pert_bounded.
 \<close>
 
 lemma composition_relaxed_structural:
@@ -1421,13 +1430,13 @@ next
 qed
 
 
-subsection \<open>8.2 Olasiliksal kisim: locale cst_composition (A1'in sembolik icerigi)\<close>
+subsection \<open>8.2 Probabilistic part: locale cst_composition (the symbolic content of A1)\<close>
 
 text \<open>
-  App A, A1'in sembolik hali: her W \<in> K_fwk icin Pr[|W_cf - W_orig| > Dstar] \<le> delta_A1.
-  p_pert E \<iota> w bu olasiligin soyut reel parametresi (olculur, ispatlanmaz -- antecedent
-  disiplini). Ikinci assumption CapSep'in yapisal iddiasi K_int \<inter> K_fwk = {}'nin
-  mudahale-degiskeni duzeyindeki hali: A1 altinda hedef X, K_fwk'nin disindadir.
+  App A, the symbolic form of A1: for every W \<in> K_fwk, Pr[|W_cf - W_orig| > Dstar] \<le> delta_A1.
+  p_pert E \<iota> w is the abstract real parameter for this probability (measured, not proved -- antecedent
+  discipline). The second assumption is the intervention-variable-level form of CapSep's
+  structural claim K_int \<inter> K_fwk = {}: under A1 the target X lies outside K_fwk.
 \<close>
 
 locale cst_composition = cst_assumptions +
@@ -1440,7 +1449,7 @@ locale cst_composition = cst_assumptions +
 begin
 
 text \<open>
-  App A item (ii), paper'daki ifadeyle birebir: "for all W in K_fwk, the outcome under
+  App A item (ii), verbatim as stated in the paper: "for all W in K_fwk, the outcome under
   do(x') equals the outcome under do(x') while holding W = w_orig, up to a perturbation
   bounded by Dstar on each W with probability at least 1 - delta_A1".
 \<close>
@@ -1465,21 +1474,21 @@ proof -
     using out pr composition_relaxed_structural[OF out] by blast
 qed
 
-text \<open>W tutulurken do(x') etkisi korunur (effectiveness composition altinda kaybolmaz).\<close>
+text \<open>The effect of do(x') is preserved while holding W (effectiveness is not lost under composition).\<close>
 
 corollary composition_W_keeps_effect:
   assumes "A1 E \<iota>"
   shows "hold fwk_vars \<sigma>o (apply_iv \<iota> \<sigma>c) (var \<iota>) = newval \<iota>"
   by (rule hold_preserves_effectiveness[OF A1_target_outside_fwk[OF assms]])
 
-text \<open>Kati form geri kazanilir: delta_A1 \<rightarrow> 0 limitinde perturbasyon olasiligi 0 (App A "Recovery of strict form").\<close>
+text \<open>The strict form is recovered: in the limit delta_A1 \<rightarrow> 0 the perturbation probability is 0 (App A "Recovery of strict form").\<close>
 
 theorem composition_strict_recovered:
   assumes "A1 E \<iota>" and "delta_A1 = 0" and "w \<in> fwk_vars"
   shows "p_pert E \<iota> w = 0"
   using A1_pert_per_var[OF assms(1) assms(3)] assms(2) by linarith
 
-text \<open>Sonlu K_fwk uzerinde union bound: toplam perturbasyon kutlesi \<le> |K_fwk| * delta_A1.\<close>
+text \<open>Union bound over finite K_fwk: total perturbation mass \<le> |K_fwk| * delta_A1.\<close>
 
 theorem composition_W_union_bound:
   assumes "A1 E \<iota>" and "finite fwk_vars"
@@ -1492,8 +1501,8 @@ proof -
 qed
 
 text \<open>
-  Kosullu CST teoremi, composition'in W-formuyla: eski confounder-bound modeli
-  (composition_relaxed) KALIR, W-formu ona EKLENIR -- teorem ikisini birden verir.
+  The conditional CST theorem with the W-form of composition: the old confounder-bound model
+  (composition_relaxed) REMAINS, the W-form is ADDED to it -- the theorem yields both.
 \<close>
 
 theorem cst_conditional_W:
@@ -1516,8 +1525,8 @@ theorem cst_conditional_W:
 end  \<comment> \<open>locale cst_composition\<close>
 
 text \<open>
-  Tutarlilik + vacuous olmadiginin kaniti: K_fwk = {0}, A1 = "hedef 0 degil".
-  A1 hem saglanabilir (var = 7) hem ihlal edilebilir (var = 0); K_fwk bos degil.
+  Consistency + proof of non-vacuity: K_fwk = {0}, A1 = "target is not 0".
+  A1 can both be satisfied (var = 7) and violated (var = 0); K_fwk is non-empty.
 \<close>
 
 interpretation cst_comp_demo:
@@ -1541,17 +1550,17 @@ lemma comp_demo_A1_falsifiable:
   by simp
 
 
-subsection \<open>8.3 Prop 1, trace-zincirli: T_cf^(k) bir sonraki adimin baseline'i\<close>
+subsection \<open>8.3 Prop 1, trace-threaded: T_cf^(k) is the baseline of the next step\<close>
 
 context cst_assumptions
 begin
 
 text \<open>
-  Zincir = mudahale listesi + (n+1) trace: Ts!0 = T_orig, Ts!(k+1) = k'inci adimin
-  T_cf'i; adim k+1 Ts!(k+1)'i BASELINE alir (App A tumevarim adimi). Bu,
-  chain_iff_all_atomic'teki boolean-listesi soyutlamasinin yerini alan GERCEK zincir.
-  Siralama iddianin PARCASIDIR: rev \<iota>s icin ayni Ts anlamli degildir (baska bir
-  yurutme, baska trace'ler) -- komutatiflik iddia edilmez (App A).
+  Chain = list of interventions + (n+1) traces: Ts!0 = T_orig, Ts!(k+1) = the T_cf of
+  step k; step k+1 takes Ts!(k+1) as its BASELINE (App A induction step). This is the
+  REAL chain replacing the boolean-list abstraction in chain_iff_all_atomic.
+  The ordering is PART of the claim: for rev \<iota>s the same Ts is not meaningful (a different
+  execution, different traces) -- commutativity is not claimed (App A).
 \<close>
 
 fun chain_ok :: "envelope \<Rightarrow> intervention list \<Rightarrow> bool \<Rightarrow> trace list \<Rightarrow> bool" where
@@ -1560,7 +1569,7 @@ fun chain_ok :: "envelope \<Rightarrow> intervention list \<Rightarrow> bool \<R
      (admissible Dstar E \<iota> ok To Tc \<and> chain_ok E \<iota>s ok (Tc # Ts))"
 | "chain_ok E (\<iota> # \<iota>s) ok Ts = False"
 
-text \<open>Prop 1'in GERCEK ifadesi: zincir admissible \<longleftrightarrow> her atomik adim, KENDI baseline'iyla, admissible.\<close>
+text \<open>The REAL statement of Prop 1: chain admissible \<longleftrightarrow> every atomic step, with its OWN baseline, is admissible.\<close>
 
 theorem chain_ok_iff_steps:
   "chain_ok E \<iota>s ok Ts \<longleftrightarrow>
@@ -1599,8 +1608,8 @@ next
 qed
 
 text \<open>
-  App A tumevarim adimi, birebir: zinciri bir adim uzatmak = SON T_cf'i baseline alan
-  bir atomik adim eklemek. "Applying Theorem 1 to the atomic step with T_cf^(n) as the
+  App A induction step, verbatim: extending the chain by one step = adding an atomic step
+  that takes the LAST T_cf as baseline. "Applying Theorem 1 to the atomic step with T_cf^(n) as the
   original trace yields admissibility for the extended chain."
 \<close>
 
@@ -1650,7 +1659,7 @@ proof -
   show ?thesis unfolding goal_eq using lens split by blast
 qed
 
-text \<open>Zincirin HER adimi icin kosullu CST sonucu (Teorem 1 adim adim, kendi baseline'inda).\<close>
+text \<open>The conditional CST result for EVERY step of the chain (Theorem 1 step by step, each on its own baseline).\<close>
 
 theorem chain_conditional:
   assumes hyps: "\<And>\<iota>. \<iota> \<in> set \<iota>s \<Longrightarrow> A1 E \<iota> \<and> A2 E \<iota> \<and> A3 E \<iota> \<and> A4 E \<iota>"
@@ -1676,8 +1685,8 @@ proof -
 qed
 
 text \<open>
-  A1^(n+1) \<le> A1^(n) + delta_A1 (App A): zincir bir adim uzadiginda birikmis A1 zarfi
-  tam olarak delta_A1 artar; toplam n * delta_A1 (accum_delta_eq).
+  A1^(n+1) \<le> A1^(n) + delta_A1 (App A): when the chain grows by one step the accumulated A1 envelope
+  increases by exactly delta_A1; total n * delta_A1 (accum_delta_eq).
 \<close>
 
 lemma chain_delta_step:
@@ -1685,9 +1694,9 @@ lemma chain_delta_step:
   by simp
 
 text \<open>
-  Zincirin tanik zarflari: adimlar BAGIMLI olsa da union bound gecerlidir (bagimsizlik
-  varsayilmaz -- App A "tighter bounds under independence are not asserted").
-  Toplam \<le> tanik-duyarli sweep_ub \<le> n * blanket.
+  Witness envelopes of the chain: even though the steps are DEPENDENT, the union bound holds (independence
+  is not assumed -- App A "tighter bounds under independence are not asserted").
+  Total \<le> witness-aware sweep_ub \<le> n * blanket.
 \<close>
 
 definition chain_actual :: "envelope \<Rightarrow> intervention list \<Rightarrow> ac2a_witness list \<Rightarrow> real" where
@@ -1719,8 +1728,8 @@ qed
 end  \<comment> \<open>context cst_assumptions\<close>
 
 text \<open>
-  Somut 2-adimli zincir (within-boot rejimi): T0 = ex_orig, T1 rax'i degistirir,
-  T2 T1'in rax'ini bir daha degistirir; ikinci adimin baseline'i T1'dir.
+  Concrete 2-step chain (within-boot regime): T0 = ex_orig, T1 changes rax,
+  T2 changes T1's rax once more; the baseline of the second step is T1.
 \<close>
 
 definition ch_T1 :: trace where
@@ -1750,7 +1759,7 @@ lemma chain_demo:
   "cst_withinboot.chain_ok ch_E [ch_iv1, ch_iv2] True [ex_orig, ch_T1, ch_T2]"
   by (simp add: cst_withinboot.chain_ok.simps chain_demo_step1 chain_demo_step2)
 
-text \<open>Baseline kaymasi somut: ikinci adim T_orig'e degil T1'e karsi olculur.\<close>
+text \<open>The baseline shift made concrete: the second step is measured against T1, not T_orig.\<close>
 
 lemma chain_demo_baseline_shift:
   "cst_withinboot.chain_ok ch_E [ch_iv1, ch_iv2] True [ex_orig, ch_T1, ch_T2]

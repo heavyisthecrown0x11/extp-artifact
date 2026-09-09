@@ -1,5 +1,10 @@
-Cross-Boot Stability Collection — N=100 Boot Artifacts (paper §5)
+Cross-Boot Stability Collection — Boot Artifacts (paper, Evaluation)
 ===================================================================
+
+Note. This protocol and these images were prepared for an N=100 collection.
+The hardware became unavailable before that run took place; the paper reports
+the N=34 archive collected earlier (7 May 2026) with an earlier run of this
+collection protocol. The N=34 summary is reproduced at the end of this file.
 
 Build date  : 2026-05-18 14:09
 Hardware    : Intel 12th Gen Alder Lake, microcode 0x3e, ASUS Z690
@@ -9,74 +14,74 @@ Cross-boot  : EXTP_CROSS_BOOT_N = 100 (main.c:94)
               Per-boot 98 TIMING_RAW samples + BOOT_START/BOOT_END markers
 
 ────────────────────────────────────────────────────────────────────
-LAYOUT (flat — GRUB-friendly, tek dizinde canonical isimler)
+LAYOUT (flat — GRUB-friendly, canonical names in a single directory)
 ────────────────────────────────────────────────────────────────────
 
   BOOT_INSTRUCTIONS.txt
-  kernel-x86_64-pc99                       (3.3 MB, ortak — her iki adımda)
+  kernel-x86_64-pc99                       (3.3 MB, shared by both steps)
   extp-vmm-image-x86_64-pc99               (881 KB, CROSS-BOOT — canonical
-                                            isim, GRUB bunu yükler)
-  extp-vmm-image-x86_64-pc99.reset         (874 KB, RESET utility — manuel
-                                            rename ile aktive edilir)
+                                            name; this is what GRUB loads)
+  extp-vmm-image-x86_64-pc99.reset         (874 KB, RESET utility — activated
+                                            by manual rename)
 
-GRUB her zaman `extp-vmm-image-x86_64-pc99` adındaki rootserver'ı
-yükler. Mode değişimi USB üzerindeki bu dosyanın hangi build olduğuna
-göre belirlenir.
+GRUB always loads the rootserver named `extp-vmm-image-x86_64-pc99`.
+The mode is therefore selected by which build sits under that name on
+the USB stick.
 
 ────────────────────────────────────────────────────────────────────
-ADIM 1 — RESET: CMOS counter'ı sıfırla (tek seferlik)
+STEP 1 — RESET: zero the CMOS counter (one-off)
 ────────────────────────────────────────────────────────────────────
 
-USB'yi hazırlarken:
+While preparing the USB stick:
 
-  # .reset uzantılı dosyayı canonical isme rename et:
+  # rename the .reset build to the canonical name:
   mv  extp-vmm-image-x86_64-pc99           extp-vmm-image-x86_64-pc99.crossboot
   cp  extp-vmm-image-x86_64-pc99.reset     extp-vmm-image-x86_64-pc99
 
-  # USB'ye flash et: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
+  # flash to USB: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
 
-Hardware'a flash → boot et → bir kez çalışır:
+Flash to hardware → boot → runs once:
 
   [EXTp][CMOS] self-test OK
   [EXTp][CMOS] boot_count reset → 0
   [EXTp][HALT] reset utility complete
 
 ────────────────────────────────────────────────────────────────────
-ADIM 2 — CROSS-BOOT: N=100 collection
+STEP 2 — CROSS-BOOT: N=100 collection
 ────────────────────────────────────────────────────────────────────
 
-USB'yi yeniden hazırla:
+Re-prepare the USB stick:
 
-  # Cross-boot build'i canonical isme geri yükle:
+  # restore the cross-boot build under the canonical name:
   cp  extp-vmm-image-x86_64-pc99.crossboot  extp-vmm-image-x86_64-pc99
 
-  # USB'ye flash et: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
-  # (kernel zaten USB'de, sadece rootserver image üzerine yazılır)
+  # flash to USB: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
+  # (the kernel is already on the stick; only the rootserver image is overwritten)
 
-Serial logger'ı başlat:
+Start the serial logger:
 
   picocom -b 115200 /dev/ttyUSB0 \
-      | tee /root/sel4-work/boot_logN100_final.txt
+      | tee boot_logN100_final.txt
 
-Hardware'a flash → power-cycle döngüsü → 100 boot otomatik:
+Flash to hardware → power-cycle loop → 100 boots run automatically:
 
   Boot N (N=0..99):
     [EXTp][BOOT] boot_count=N (target N=100)
     BOOT_START boot=N
     [EXTp][TIMING_RAW] sample=0 delta=...
-    ... (98 örnek)
+    ... (98 samples)
     BOOT_END boot=N
 
-  Boot 100'de halt:
+  Halt at boot 100:
     [EXTp][BOOT] boot_count=100 (target N=100)
     CROSS_BOOT_COMPLETE n=100
     [EXTp][HALT] cross-boot collection complete
 
-Süre: ~30 dakika (10-20 sn/boot × 100).
+Duration: ~30 minutes (10-20 s/boot × 100).
 Final log: ~10 MB.
 
 ────────────────────────────────────────────────────────────────────
-PASS GATE (host-side analiz, bittikten sonra)
+PASS GATE (host-side analysis, after the run)
 ────────────────────────────────────────────────────────────────────
 
 Sanity checks:
@@ -86,25 +91,15 @@ Sanity checks:
   grep 'CROSS_BOOT_COMPLETE' boot_logN100_final.txt
 
 Stats:
-  python3 /root/sel4-work/cross_boot_aggregate.py \
-          /root/sel4-work/boot_logN100_final.txt
+  python3 cross_boot_aggregate.py boot_logN100_final.txt
 
-N=34 archive reference (boot_logN34_archive.txt):
+N=34 archive reference (boot_logN34_archive.txt, 7 May 2026):
   Mean of means:       18,599,092.5 cycle
   Stdev of means:           433.3 cycle
   Within-boot avg:        3,066.6 cycle
   Ratio (cross/within):       0.1413
-  Hypothesis (ratio < 0.10):  NOT SUPPORTED
+  Hypothesis (ratio < 0.10):  NOT SUPPORTED at N=34
 
-N=100'de variance estimates daha sağlam olacak — gerçek ratio'nun
-0.10'un altında mı üstünde mi olduğu net olacak.
-
-────────────────────────────────────────────────────────────────────
-CROSS-REFERENCE
-────────────────────────────────────────────────────────────────────
-
-  boot_logN34_archive.txt              — eski N=34 collection (May 7)
-  cross_boot_aggregate.py              — analyzer
-  Cross_Boot_Stability_N100.md         — vault entry yazılacak
-                                          (N=34 entry'sini supersede)
-  Paper §5 Empirical Evaluation row    — N=100 numerical anchor ile güncellenecek
+At N=100 the variance estimates would be tighter, settling whether the
+true ratio lies below or above 0.10. This is orthogonal to the paper's
+SOE score (score_S = 1.0000 over the N=34 cross-boot trials).
