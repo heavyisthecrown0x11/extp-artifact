@@ -1,0 +1,52 @@
+Paper §6 Synthetic Demonstration — numerical summary
+======================================================
+
+A. Silent-hook production (Day 8, N=222 single-boot)
+-----------------------------------------------------
+  n_per_cond                : 100
+  σ̂_baseline_T_orig         :    6,236.5 cycle
+  σ̂_T_orig 95% χ² CI        : [   5,475.7,    7,244.8]
+                              (-12.2% / +16.2%)
+  σ̂_baseline_T_cf           :    7,658.6 cycle
+  σ̂_T_cf 95% χ² CI          : [   6,724.3,    8,896.8]
+  mean_T_orig               :     18,581,672 cycle
+  mean_T_cf                 :     18,582,014 cycle
+  intervention signature    :           +342 cycle
+  Δ*_synthetic (α=0.05)     :         10,259 cycle
+  signature / Δ*            :         +0.033
+  timing clause             : SUBTHRESHOLD
+  A1-modulo                 : HOLDS
+
+B. Naïve-hook reference (Day 6, N=68 single-boot, n=23/cond)
+--------------------------------------------------------------
+  σ̂_baseline_T_orig         :    7,727.0 cycle
+  mean_T_orig               :     18,579,350 cycle
+  mean_T_cf                 :     45,196,949 cycle
+  intervention signature    :    +26,617,599 cycle  (≈5.43 ms at 4.9 GHz)
+  Δ*_naive                  :         12,711 cycle
+  signature / Δ*            :        +2094.1
+  timing clause             : FIRES (I/O artifact from informational printf)
+  A1-modulo                 : BROKEN on timing surface
+
+C. Reference: MI L1-pchase iter=0 (boot_log12, n=108)
+-----------------------------------------------------
+  σ̂_baseline                :    5,518.0 cycle
+  mean                      :     18,582,928 cycle
+  Δ*                        :          9,077 cycle (1.645 · 5,518)
+
+D. SOE clause divergence (both hook modes, all N)
+-------------------------------------------------
+  Event 0: rip=0x10000, rax=0 (identical in T_orig and T_cf)
+  Event 1: rip=0x1000d, rax=0           (T_orig, default path)
+           rip=0x10016, rax=0x80000008  (T_cf,  privileged path)
+  Event 2: rip=0x10018 (VMCALL terminator; identical)
+  → SOE-clause divergence at event 1: deterministic 4-tuple delta
+  → False-positive rate: 0 (deterministic under A4)
+
+E. Hardware identity (reproducibility)
+--------------------------------------
+  CPU                       : Intel 12th Gen Alder Lake
+  Microcode revision        : 0x3e
+  Motherboard               : ASUS Z690
+  Serial console            : FT232RL
+  P-state                   : Locked at 4.9 GHz turbo

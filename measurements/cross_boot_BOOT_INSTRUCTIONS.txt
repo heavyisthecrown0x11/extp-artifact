@@ -1,0 +1,110 @@
+Cross-Boot Stability Collection — N=100 Boot Artifacts (paper §5)
+===================================================================
+
+Build date  : 2026-05-18 14:09
+Hardware    : Intel 12th Gen Alder Lake, microcode 0x3e, ASUS Z690
+              FT232RL serial console, P-state locked @ 4.9 GHz turbo
+Cross-boot  : EXTP_CROSS_BOOT_N = 100 (main.c:94)
+              CMOS-persistent boot counter
+              Per-boot 98 TIMING_RAW samples + BOOT_START/BOOT_END markers
+
+────────────────────────────────────────────────────────────────────
+LAYOUT (flat — GRUB-friendly, tek dizinde canonical isimler)
+────────────────────────────────────────────────────────────────────
+
+  BOOT_INSTRUCTIONS.txt
+  kernel-x86_64-pc99                       (3.3 MB, ortak — her iki adımda)
+  extp-vmm-image-x86_64-pc99               (881 KB, CROSS-BOOT — canonical
+                                            isim, GRUB bunu yükler)
+  extp-vmm-image-x86_64-pc99.reset         (874 KB, RESET utility — manuel
+                                            rename ile aktive edilir)
+
+GRUB her zaman `extp-vmm-image-x86_64-pc99` adındaki rootserver'ı
+yükler. Mode değişimi USB üzerindeki bu dosyanın hangi build olduğuna
+göre belirlenir.
+
+────────────────────────────────────────────────────────────────────
+ADIM 1 — RESET: CMOS counter'ı sıfırla (tek seferlik)
+────────────────────────────────────────────────────────────────────
+
+USB'yi hazırlarken:
+
+  # .reset uzantılı dosyayı canonical isme rename et:
+  mv  extp-vmm-image-x86_64-pc99           extp-vmm-image-x86_64-pc99.crossboot
+  cp  extp-vmm-image-x86_64-pc99.reset     extp-vmm-image-x86_64-pc99
+
+  # USB'ye flash et: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
+
+Hardware'a flash → boot et → bir kez çalışır:
+
+  [EXTp][CMOS] self-test OK
+  [EXTp][CMOS] boot_count reset → 0
+  [EXTp][HALT] reset utility complete
+
+────────────────────────────────────────────────────────────────────
+ADIM 2 — CROSS-BOOT: N=100 collection
+────────────────────────────────────────────────────────────────────
+
+USB'yi yeniden hazırla:
+
+  # Cross-boot build'i canonical isme geri yükle:
+  cp  extp-vmm-image-x86_64-pc99.crossboot  extp-vmm-image-x86_64-pc99
+
+  # USB'ye flash et: kernel-x86_64-pc99 + extp-vmm-image-x86_64-pc99
+  # (kernel zaten USB'de, sadece rootserver image üzerine yazılır)
+
+Serial logger'ı başlat:
+
+  picocom -b 115200 /dev/ttyUSB0 \
+      | tee /root/sel4-work/boot_logN100_final.txt
+
+Hardware'a flash → power-cycle döngüsü → 100 boot otomatik:
+
+  Boot N (N=0..99):
+    [EXTp][BOOT] boot_count=N (target N=100)
+    BOOT_START boot=N
+    [EXTp][TIMING_RAW] sample=0 delta=...
+    ... (98 örnek)
+    BOOT_END boot=N
+
+  Boot 100'de halt:
+    [EXTp][BOOT] boot_count=100 (target N=100)
+    CROSS_BOOT_COMPLETE n=100
+    [EXTp][HALT] cross-boot collection complete
+
+Süre: ~30 dakika (10-20 sn/boot × 100).
+Final log: ~10 MB.
+
+────────────────────────────────────────────────────────────────────
+PASS GATE (host-side analiz, bittikten sonra)
+────────────────────────────────────────────────────────────────────
+
+Sanity checks:
+  grep -c 'BOOT_START' boot_logN100_final.txt   # = 100
+  grep -c 'BOOT_END'   boot_logN100_final.txt   # = 100
+  grep -c 'TIMING_RAW' boot_logN100_final.txt   # = 9800 (100 × 98)
+  grep 'CROSS_BOOT_COMPLETE' boot_logN100_final.txt
+
+Stats:
+  python3 /root/sel4-work/cross_boot_aggregate.py \
+          /root/sel4-work/boot_logN100_final.txt
+
+N=34 archive reference (boot_logN34_archive.txt):
+  Mean of means:       18,599,092.5 cycle
+  Stdev of means:           433.3 cycle
+  Within-boot avg:        3,066.6 cycle
+  Ratio (cross/within):       0.1413
+  Hypothesis (ratio < 0.10):  NOT SUPPORTED
+
+N=100'de variance estimates daha sağlam olacak — gerçek ratio'nun
+0.10'un altında mı üstünde mi olduğu net olacak.
+
+────────────────────────────────────────────────────────────────────
+CROSS-REFERENCE
+────────────────────────────────────────────────────────────────────
+
+  boot_logN34_archive.txt              — eski N=34 collection (May 7)
+  cross_boot_aggregate.py              — analyzer
+  Cross_Boot_Stability_N100.md         — vault entry yazılacak
+                                          (N=34 entry'sini supersede)
+  Paper §5 Empirical Evaluation row    — N=100 numerical anchor ile güncellenecek

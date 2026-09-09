@@ -1,0 +1,76 @@
+CST Counterfactual Fuzzing Sweep — Boot Artifacts (paper §7.2 anchor)
+======================================================================
+
+Build: 2026-05-13 (counterfactual fuzzing sweep — varies r8 across 33
+       curated values across T_cf runs).
+       EXTP_DEMO_BOOT=ON, EXTP_DEMO_FUZZ_SWEEP=ON,
+       EXTP_NUM_RUNS_OVERRIDE=132 (66 T_orig + 66 T_cf, two passes over
+       the 33-value sweep array). Silent intervention hook.
+
+Files in this directory:
+  kernel-x86_64-pc99             3.3 MB   seL4 microkernel ELF
+  extp-vmm-image-x86_64-pc99     881 KB   EXTp VMM rootserver ELF
+                                            (sweep + N=132 build)
+
+Flash / boot procedure: same as before.
+
+Expected serial output:
+
+  [boot prelude — same as Day 8]
+  [EXTp][DEMO] Synthetic capability-bypass binary loaded (29 bytes)
+               at GPA=0x10000
+  [EXTp][DEMO] CST synthetic demonstration: 2-condition
+               T_orig/T_cf alternation, 132 runs
+
+  132 runs alternating, with T_cf runs now varying r8:
+    [EXTp][DEMO] run=0 T_orig (no intervention; r8=0)
+      [exits + VMCALL]
+    [EXTp][DEMO_SWEEP] run=1 T_cf_idx=0 r8_override=0x0 expected_path=default
+      [Event 1 RIP=0x1000d (default path)]
+    [EXTp][DEMO] run=2 T_orig (no intervention; r8=0)
+    [EXTp][DEMO_SWEEP] run=3 T_cf_idx=1 r8_override=0x1 expected_path=default
+    ...
+    [EXTp][DEMO_SWEEP] run=N T_cf_idx=32 r8_override=0xdead expected_path=privileged
+      [Event 1 RIP=0x10016 (privileged path)]
+    ...
+
+Sweep array (33 r8 values):
+  0x0000..0x000F (16 small values)
+  0x1111, 0x2222, ..., 0xEEEE (14 distinct nibble patterns)
+  0xCAFE, 0xBEEF, 0xDEAD (interesting trigger candidates)
+
+Each value appears exactly TWICE across the 66 T_cf runs (2-pass sweep
+for cross-run reproducibility within each input).
+
+PASS gate:
+  1. 132 runs complete cleanly
+  2. 66 [EXTp][DEMO_SWEEP] log lines emitted
+  3. 33 unique r8 values exercised, each exactly twice
+  4. Only r8=0xDEAD triggers privileged path
+     (Event 1 RIP=0x10016 in those runs, 0x1000d in all others)
+  5. The two repeats of r8=0xDEAD produce identical Event 1 RIP
+     (within-input reproducibility)
+
+Day 9b host-side analysis:
+  python3 /root/sel4-work/analyze_demo_fuzz_sweep.py /root/sel4-work/CST_Demonstration6.txt
+
+  Outputs:
+  - Verdict table: r8 → expected_path / observed_rip / diverged / verdict
+  - Causal-map figure (paper §6.2 mini paragraph + §7.2 empirical anchor)
+  - Divergence count: should be 1/33 (only r8=0xDEAD)
+
+Paper §6.2 mini paragraph (template — fill numbers post-analysis):
+  "To validate the framework's counterfactual fuzzing pattern claim
+  (§7.2), we extended the synthetic demonstration to sweep r8 across
+  33 curated values (Figure X). Of the 33 inputs tested, exactly
+  one — r8=0xDEAD — triggered the SOE-clause divergence at event 1,
+  producing CST verdict 'privileged path attributable to do(r8=0xDEAD)'.
+  All other 32 inputs produced no observable divergence; the framework
+  correctly identified them as non-divergent within the calibrated
+  envelope. This single-shot run shows that, with the synthetic
+  binary's narrow branch condition, the framework's atomic CST
+  verdict acts as the per-input adjudication step in a fuzzing-style
+  causal-map construction (§7.2 fuzzing intersection)."
+
+Cross-reference:
+  CST_Demonstration_Implementation_Log.md Day 9b entry (forthcoming)
