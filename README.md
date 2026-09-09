@@ -62,7 +62,7 @@ numbers were collected with; the VMM source tree is not part of this release.
   author = {Utku Erol},
   title  = {{EXTp}: A Soundness Theorem for Counterfactual Exploit Replay on Formally Verified Microkernels},
   year   = {2026},
-  note   = {Preprint. Artifact: https://github.com/GITHUB-USER/extp-artifact}
+  note   = {Preprint. Artifact: https://github.com/heavyisthecrown0x11/extp-artifact}
 }
 ```
 
